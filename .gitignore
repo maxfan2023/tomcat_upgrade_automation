@@ -1,0 +1,5 @@
+.DS_Store
+.state/
+logs/
+prompt.md
+tmp_vision_ocr.swift
