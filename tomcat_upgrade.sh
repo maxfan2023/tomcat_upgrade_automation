@@ -39,6 +39,7 @@ FULL_APPS_BACKUP_PREFIX="apps_full_backup"
 MANAGED_HOME_FILES=(catalina.bat catalina.sh)
 MANAGED_BASE_CONF_FILES=(logging.properties web.xml server.xml)
 MANAGED_TMPLT_CONF_FILES=(logging.properties web.xml server.xml)
+MANAGED_TOMCAT_DIR_NAMES=()
 
 CONFIG_FILE="${DEFAULT_CONFIG_FILE}"
 SELECTED_ENVS_CSV=""
@@ -443,6 +444,7 @@ load_config() {
   SHELL_EXECUTABLE="${SHELL_EXECUTABLE:-bash}"
   CLI_TARGET_VERSION="${CLI_TARGET_VERSION:-}"
   TARGET_VERSION="${CLI_TARGET_VERSION:-${DEFAULT_TOMCAT_VERSION}}"
+  MANAGED_TOMCAT_DIR_NAMES=("${CATA_HOME_DIR_NAME}" "${CATA_BASE_TMPLT_DIR_NAME}" "${CATA_BASE_DIR_NAME}")
   BACKUP_FLAG="$(printf '%s' "${BACKUP_FLAG}" | tr '[:upper:]' '[:lower:]')"
   case "${BACKUP_FLAG}" in
     yes|no) ;;
@@ -585,6 +587,24 @@ full_apps_backup_dir_for_env() {
   printf '%s/%s_%s\n' "${hub_dir}" "${FULL_APPS_BACKUP_PREFIX}" "${RUN_DATE_DDMMYYYY}"
 }
 
+managed_tomcat_dir_path_for_env() {
+  local env_name="$1"
+  local dir_name="$2"
+  printf '%s/%s\n' "$(apps_dir_for_env "${env_name}")" "${dir_name}"
+}
+
+managed_tomcat_org_dir_path_for_env() {
+  local env_name="$1"
+  local dir_name="$2"
+  org_dir_path "$(managed_tomcat_dir_path_for_env "${env_name}" "${dir_name}")"
+}
+
+managed_tomcat_backup_dir_path_for_env() {
+  local env_name="$1"
+  local dir_name="$2"
+  dated_backup_path "$(managed_tomcat_dir_path_for_env "${env_name}" "${dir_name}")"
+}
+
 profile_for_env() {
   config_get ENV_PROFILE "$1"
 }
@@ -672,19 +692,18 @@ verify_version_for_env() {
 
 verify_required_dirs_for_env() {
   local env_name="$1"
-  local apps_dir
-  apps_dir="$(apps_dir_for_env "${env_name}")"
+  local dir_name=""
 
   if [[ "${DRY_RUN}" -eq 1 ]]; then
-    log_cmd "$(quote_cmd test -d "${apps_dir}/${CATA_HOME_DIR_NAME}")"
-    log_cmd "$(quote_cmd test -d "${apps_dir}/${CATA_BASE_DIR_NAME}")"
-    log_cmd "$(quote_cmd test -d "${apps_dir}/${CATA_BASE_TMPLT_DIR_NAME}")"
+    for dir_name in "${MANAGED_TOMCAT_DIR_NAMES[@]}"; do
+      log_cmd "$(quote_cmd test -d "$(managed_tomcat_dir_path_for_env "${env_name}" "${dir_name}")")"
+    done
     return 0
   fi
 
-  ensure_dir_exists "${apps_dir}/${CATA_HOME_DIR_NAME}"
-  ensure_dir_exists "${apps_dir}/${CATA_BASE_DIR_NAME}"
-  ensure_dir_exists "${apps_dir}/${CATA_BASE_TMPLT_DIR_NAME}"
+  for dir_name in "${MANAGED_TOMCAT_DIR_NAMES[@]}"; do
+    ensure_dir_exists "$(managed_tomcat_dir_path_for_env "${env_name}" "${dir_name}")"
+  done
 }
 
 backup_directory_if_needed() {
@@ -792,6 +811,29 @@ rename_to_org_if_needed() {
   die "Cannot rename ${current_dir}; neither the current nor the _org directory exists"
 }
 
+backup_managed_tomcat_dirs_for_env() {
+  local env_name="$1"
+  local dir_name=""
+  local source_dir=""
+  local backup_dir=""
+
+  for dir_name in "${MANAGED_TOMCAT_DIR_NAMES[@]}"; do
+    source_dir="$(managed_tomcat_dir_path_for_env "${env_name}" "${dir_name}")"
+    backup_dir="$(managed_tomcat_backup_dir_path_for_env "${env_name}" "${dir_name}")"
+    backup_directory_if_needed "${source_dir}" "${backup_dir}"
+    archive_directory_if_needed "${backup_dir}"
+  done
+}
+
+rename_managed_tomcat_dirs_for_env() {
+  local env_name="$1"
+  local dir_name=""
+
+  for dir_name in "${MANAGED_TOMCAT_DIR_NAMES[@]}"; do
+    rename_to_org_if_needed "$(managed_tomcat_dir_path_for_env "${env_name}" "${dir_name}")"
+  done
+}
+
 required_dir_state() {
   local env_name="$1"
   local apps_dir
@@ -860,6 +902,21 @@ sync_file_if_needed() {
   run_logged_cmd cp -p "${source_file}" "${target_file}"
 }
 
+sync_conf_file_set_if_needed() {
+  local source_conf_dir="$1"
+  local target_conf_dir="$2"
+  local label_prefix="$3"
+  shift 3
+  local file_name=""
+
+  for file_name in "$@"; do
+    sync_file_if_needed \
+      "${source_conf_dir}/${file_name}" \
+      "${target_conf_dir}/${file_name}" \
+      "${label_prefix}/conf/${file_name}"
+  done
+}
+
 # Synchronize a managed directory by replacing the target tree when differences
 # are detected. We do a full tree replace instead of copying only changed files
 # so that step 10 directory comparisons can converge to a clean match.
@@ -888,6 +945,22 @@ sync_directory_tree_if_needed() {
     run_logged_cmd rm -rf "${target_dir}"
   fi
   run_logged_cmd cp -a "${source_dir}" "${target_dir}"
+}
+
+sync_runtime_dirs_if_needed() {
+  local apps_dir="$1"
+  local target_root="$2"
+  local source_root="$3"
+  local label_prefix="$4"
+  local runtime_dir=""
+
+  for runtime_dir in "${RESTORE_COMPARE_DIRS[@]}"; do
+    sync_directory_tree_if_needed \
+      "${source_root}/${runtime_dir}" \
+      "${target_root}/${runtime_dir}" \
+      "${label_prefix}/${runtime_dir}" \
+      "${apps_dir}"
+  done
 }
 
 assert_files_identical() {
@@ -922,6 +995,119 @@ assert_directories_identical() {
 
   diff -qr "${left}" "${right}" >/dev/null 2>&1 || die "Verification failed for ${label}: ${left} differs from ${right}"
   log_ok "${label} matches"
+}
+
+assert_conf_file_set_identical() {
+  local source_conf_dir="$1"
+  local target_conf_dir="$2"
+  local label_prefix="$3"
+  shift 3
+  local file_name=""
+
+  for file_name in "$@"; do
+    assert_files_identical \
+      "${source_conf_dir}/${file_name}" \
+      "${target_conf_dir}/${file_name}" \
+      "${label_prefix}/conf/${file_name}"
+  done
+}
+
+assert_runtime_dirs_identical() {
+  local source_root="$1"
+  local target_root="$2"
+  local label_prefix="$3"
+  local runtime_dir=""
+
+  for runtime_dir in "${RESTORE_COMPARE_DIRS[@]}"; do
+    assert_directories_identical \
+      "${source_root}/${runtime_dir}" \
+      "${target_root}/${runtime_dir}" \
+      "${label_prefix}/${runtime_dir}"
+  done
+}
+
+restore_managed_tree_for_env() {
+  local env_name="$1"
+  local dir_name="$2"
+  local include_catalina="$3"
+  shift 3
+  local conf_files=("$@")
+  local apps_dir=""
+  local current_root=""
+  local org_root=""
+  local current_conf=""
+  local org_conf=""
+  local label_prefix=""
+
+  apps_dir="$(apps_dir_for_env "${env_name}")"
+  current_root="$(managed_tomcat_dir_path_for_env "${env_name}" "${dir_name}")"
+  org_root="$(managed_tomcat_org_dir_path_for_env "${env_name}" "${dir_name}")"
+  current_conf="${current_root}/conf"
+  org_conf="${org_root}/conf"
+  label_prefix="${env_name}:${dir_name}"
+
+  sync_conf_file_set_if_needed "${org_conf}" "${current_conf}" "${label_prefix}" "${conf_files[@]}"
+
+  if [[ "${include_catalina}" == "yes" ]]; then
+    sync_directory_tree_if_needed "${org_conf}/Catalina" "${current_conf}/Catalina" "${label_prefix}/conf/Catalina" "${apps_dir}"
+  fi
+
+  sync_directory_tree_if_needed "${org_root}/webapps" "${current_root}/webapps" "${label_prefix}/webapps" "${apps_dir}"
+  sync_runtime_dirs_if_needed "${apps_dir}" "${current_root}" "${org_root}" "${label_prefix}"
+}
+
+verify_managed_tree_for_env() {
+  local env_name="$1"
+  local dir_name="$2"
+  local include_catalina="$3"
+  shift 3
+  local conf_files=("$@")
+  local current_root=""
+  local org_root=""
+  local current_conf=""
+  local org_conf=""
+  local label_prefix=""
+
+  current_root="$(managed_tomcat_dir_path_for_env "${env_name}" "${dir_name}")"
+  org_root="$(managed_tomcat_org_dir_path_for_env "${env_name}" "${dir_name}")"
+  current_conf="${current_root}/conf"
+  org_conf="${org_root}/conf"
+  label_prefix="${env_name}:${dir_name}"
+
+  assert_conf_file_set_identical "${org_conf}" "${current_conf}" "${label_prefix}" "${conf_files[@]}"
+
+  if [[ "${include_catalina}" == "yes" ]]; then
+    if [[ "${DRY_RUN}" -eq 1 || -d "${org_conf}/Catalina" || -d "${current_conf}/Catalina" ]]; then
+      assert_directories_identical "${org_conf}/Catalina" "${current_conf}/Catalina" "${label_prefix}/conf/Catalina"
+    fi
+  fi
+
+  assert_directories_identical "${org_root}/webapps" "${current_root}/webapps" "${label_prefix}/webapps"
+  assert_runtime_dirs_identical "${org_root}" "${current_root}" "${label_prefix}"
+}
+
+cleanup_org_dirs_for_env() {
+  local env_name="$1"
+  local apps_dir
+  local dir_name=""
+
+  apps_dir="$(apps_dir_for_env "${env_name}")"
+  for dir_name in "${MANAGED_TOMCAT_DIR_NAMES[@]}"; do
+    remove_path_if_exists "$(managed_tomcat_org_dir_path_for_env "${env_name}" "${dir_name}")" "${apps_dir}"
+  done
+}
+
+cleanup_archive_files_for_env() {
+  local env_name="$1"
+  local apps_dir
+  local dir_name=""
+  local archive_path=""
+
+  apps_dir="$(apps_dir_for_env "${env_name}")"
+  for dir_name in "${MANAGED_TOMCAT_DIR_NAMES[@]}"; do
+    archive_path="$(managed_tomcat_backup_dir_path_for_env "${env_name}" "${dir_name}").tar.gz"
+    remove_path_if_exists "${archive_path}" "${apps_dir}"
+  done
 }
 
 remove_path_if_exists() {
@@ -959,21 +1145,10 @@ step_1() {
 # the upgrade manipulates directly, and also produces tar.gz archives for them.
 step_2() {
   local env_name=""
-  local apps_dir=""
-  local source_dir=""
-  local backup_dir=""
-  local dir_name=""
-  local dir_names=("${CATA_HOME_DIR_NAME}" "${CATA_BASE_TMPLT_DIR_NAME}" "${CATA_BASE_DIR_NAME}")
 
   log_step "Step 2 - Back up the current Tomcat directories"
   for env_name in "${FILESYSTEM_ENVS[@]}"; do
-    apps_dir="$(apps_dir_for_env "${env_name}")"
-    for dir_name in "${dir_names[@]}"; do
-      source_dir="${apps_dir}/${dir_name}"
-      backup_dir="$(dated_backup_path "${source_dir}")"
-      backup_directory_if_needed "${source_dir}" "${backup_dir}"
-      archive_directory_if_needed "${backup_dir}"
-    done
+    backup_managed_tomcat_dirs_for_env "${env_name}"
   done
   log_step_done "End of Step 2 - Backup step completed"
 }
@@ -1015,16 +1190,10 @@ step_3() {
 
 step_4() {
   local env_name=""
-  local apps_dir=""
-  local dir_name=""
-  local dir_names=("${CATA_HOME_DIR_NAME}" "${CATA_BASE_TMPLT_DIR_NAME}" "${CATA_BASE_DIR_NAME}")
 
   log_step "Step 4 - Rename current Tomcat directories to *_org"
   for env_name in "${FILESYSTEM_ENVS[@]}"; do
-    apps_dir="$(apps_dir_for_env "${env_name}")"
-    for dir_name in "${dir_names[@]}"; do
-      rename_to_org_if_needed "${apps_dir}/${dir_name}"
-    done
+    rename_managed_tomcat_dirs_for_env "${env_name}"
   done
   log_step_done "End of Step 4 - Rename step completed"
 }
@@ -1100,34 +1269,10 @@ step_7() {
 # whenever differences are detected against the *_org copy.
 step_8() {
   local env_name=""
-  local apps_dir=""
-  local current_conf=""
-  local org_conf=""
-  local current_webapps=""
-  local org_webapps=""
-  local current_dir=""
-  local org_dir=""
-  local file_name=""
-  local runtime_dir=""
 
   log_step "Step 8 - Restore managed content under catalina-base-9.0"
   for env_name in "${FILESYSTEM_ENVS[@]}"; do
-    apps_dir="$(apps_dir_for_env "${env_name}")"
-    current_conf="${apps_dir}/${CATA_BASE_DIR_NAME}/conf"
-    org_conf="$(org_dir_path "${apps_dir}/${CATA_BASE_DIR_NAME}")/conf"
-    current_webapps="${apps_dir}/${CATA_BASE_DIR_NAME}/webapps"
-    org_webapps="$(org_dir_path "${apps_dir}/${CATA_BASE_DIR_NAME}")/webapps"
-
-    for file_name in "${MANAGED_BASE_CONF_FILES[@]}"; do
-      sync_file_if_needed "${org_conf}/${file_name}" "${current_conf}/${file_name}" "${env_name}:${CATA_BASE_DIR_NAME}/conf/${file_name}"
-    done
-
-    sync_directory_tree_if_needed "${org_webapps}" "${current_webapps}" "${env_name}:${CATA_BASE_DIR_NAME}/webapps" "${apps_dir}"
-    for runtime_dir in "${RESTORE_COMPARE_DIRS[@]}"; do
-      current_dir="${apps_dir}/${CATA_BASE_DIR_NAME}/${runtime_dir}"
-      org_dir="$(org_dir_path "${apps_dir}/${CATA_BASE_DIR_NAME}")/${runtime_dir}"
-      sync_directory_tree_if_needed "${org_dir}" "${current_dir}" "${env_name}:${CATA_BASE_DIR_NAME}/${runtime_dir}" "${apps_dir}"
-    done
+    restore_managed_tree_for_env "${env_name}" "${CATA_BASE_DIR_NAME}" "no" "${MANAGED_BASE_CONF_FILES[@]}"
   done
   log_step_done "End of Step 8 - Base restore completed"
 }
@@ -1136,35 +1281,10 @@ step_8() {
 # webapps, and the runtime directories that now participate in restore logic.
 step_9() {
   local env_name=""
-  local apps_dir=""
-  local current_conf=""
-  local org_conf=""
-  local current_webapps=""
-  local org_webapps=""
-  local current_dir=""
-  local org_dir=""
-  local file_name=""
-  local runtime_dir=""
 
   log_step "Step 9 - Restore managed content under catalina-base-9.0-tmplt"
   for env_name in "${FILESYSTEM_ENVS[@]}"; do
-    apps_dir="$(apps_dir_for_env "${env_name}")"
-    current_conf="${apps_dir}/${CATA_BASE_TMPLT_DIR_NAME}/conf"
-    org_conf="$(org_dir_path "${apps_dir}/${CATA_BASE_TMPLT_DIR_NAME}")/conf"
-    current_webapps="${apps_dir}/${CATA_BASE_TMPLT_DIR_NAME}/webapps"
-    org_webapps="$(org_dir_path "${apps_dir}/${CATA_BASE_TMPLT_DIR_NAME}")/webapps"
-
-    for file_name in "${MANAGED_TMPLT_CONF_FILES[@]}"; do
-      sync_file_if_needed "${org_conf}/${file_name}" "${current_conf}/${file_name}" "${env_name}:${CATA_BASE_TMPLT_DIR_NAME}/conf/${file_name}"
-    done
-
-    sync_directory_tree_if_needed "${org_conf}/Catalina" "${current_conf}/Catalina" "${env_name}:${CATA_BASE_TMPLT_DIR_NAME}/conf/Catalina" "${apps_dir}"
-    sync_directory_tree_if_needed "${org_webapps}" "${current_webapps}" "${env_name}:${CATA_BASE_TMPLT_DIR_NAME}/webapps" "${apps_dir}"
-    for runtime_dir in "${RESTORE_COMPARE_DIRS[@]}"; do
-      current_dir="${apps_dir}/${CATA_BASE_TMPLT_DIR_NAME}/${runtime_dir}"
-      org_dir="$(org_dir_path "${apps_dir}/${CATA_BASE_TMPLT_DIR_NAME}")/${runtime_dir}"
-      sync_directory_tree_if_needed "${org_dir}" "${current_dir}" "${env_name}:${CATA_BASE_TMPLT_DIR_NAME}/${runtime_dir}" "${apps_dir}"
-    done
+    restore_managed_tree_for_env "${env_name}" "${CATA_BASE_TMPLT_DIR_NAME}" "yes" "${MANAGED_TMPLT_CONF_FILES[@]}"
   done
   log_step_done "End of Step 9 - Template restore completed"
 }
@@ -1173,63 +1293,16 @@ step_9() {
 # files and directories we intentionally restored now match the *_org source.
 step_10() {
   local env_name=""
-  local apps_dir=""
-  local current_dir=""
-  local org_dir=""
-  local file_name=""
-  local runtime_dir=""
 
   log_step "Step 10 - Verify managed restored content matches *_org"
   for env_name in "${FILESYSTEM_ENVS[@]}"; do
-    apps_dir="$(apps_dir_for_env "${env_name}")"
-
-    for file_name in "${MANAGED_HOME_FILES[@]}"; do
-      assert_files_identical \
-        "$(org_dir_path "${apps_dir}/${CATA_HOME_DIR_NAME}")/bin/${file_name}" \
-        "${apps_dir}/${CATA_HOME_DIR_NAME}/bin/${file_name}" \
-        "${env_name}:${CATA_HOME_DIR_NAME}/bin/${file_name}"
-    done
-
-    for file_name in "${MANAGED_BASE_CONF_FILES[@]}"; do
-      assert_files_identical \
-        "$(org_dir_path "${apps_dir}/${CATA_BASE_DIR_NAME}")/conf/${file_name}" \
-        "${apps_dir}/${CATA_BASE_DIR_NAME}/conf/${file_name}" \
-        "${env_name}:${CATA_BASE_DIR_NAME}/conf/${file_name}"
-    done
-    assert_directories_identical \
-      "$(org_dir_path "${apps_dir}/${CATA_BASE_DIR_NAME}")/webapps" \
-      "${apps_dir}/${CATA_BASE_DIR_NAME}/webapps" \
-      "${env_name}:${CATA_BASE_DIR_NAME}/webapps"
-    for runtime_dir in "${RESTORE_COMPARE_DIRS[@]}"; do
-      assert_directories_identical \
-        "$(org_dir_path "${apps_dir}/${CATA_BASE_DIR_NAME}")/${runtime_dir}" \
-        "${apps_dir}/${CATA_BASE_DIR_NAME}/${runtime_dir}" \
-        "${env_name}:${CATA_BASE_DIR_NAME}/${runtime_dir}"
-    done
-
-    for file_name in "${MANAGED_TMPLT_CONF_FILES[@]}"; do
-      assert_files_identical \
-        "$(org_dir_path "${apps_dir}/${CATA_BASE_TMPLT_DIR_NAME}")/conf/${file_name}" \
-        "${apps_dir}/${CATA_BASE_TMPLT_DIR_NAME}/conf/${file_name}" \
-        "${env_name}:${CATA_BASE_TMPLT_DIR_NAME}/conf/${file_name}"
-    done
-
-    current_dir="${apps_dir}/${CATA_BASE_TMPLT_DIR_NAME}/conf/Catalina"
-    org_dir="$(org_dir_path "${apps_dir}/${CATA_BASE_TMPLT_DIR_NAME}")/conf/Catalina"
-    if [[ "${DRY_RUN}" -eq 1 || -d "${org_dir}" || -d "${current_dir}" ]]; then
-      assert_directories_identical "${org_dir}" "${current_dir}" "${env_name}:${CATA_BASE_TMPLT_DIR_NAME}/conf/Catalina"
-    fi
-
-    assert_directories_identical \
-      "$(org_dir_path "${apps_dir}/${CATA_BASE_TMPLT_DIR_NAME}")/webapps" \
-      "${apps_dir}/${CATA_BASE_TMPLT_DIR_NAME}/webapps" \
-      "${env_name}:${CATA_BASE_TMPLT_DIR_NAME}/webapps"
-    for runtime_dir in "${RESTORE_COMPARE_DIRS[@]}"; do
-      assert_directories_identical \
-        "$(org_dir_path "${apps_dir}/${CATA_BASE_TMPLT_DIR_NAME}")/${runtime_dir}" \
-        "${apps_dir}/${CATA_BASE_TMPLT_DIR_NAME}/${runtime_dir}" \
-        "${env_name}:${CATA_BASE_TMPLT_DIR_NAME}/${runtime_dir}"
-    done
+    assert_conf_file_set_identical \
+      "$(managed_tomcat_org_dir_path_for_env "${env_name}" "${CATA_HOME_DIR_NAME}")/bin" \
+      "$(managed_tomcat_dir_path_for_env "${env_name}" "${CATA_HOME_DIR_NAME}")/bin" \
+      "${env_name}:${CATA_HOME_DIR_NAME}/bin" \
+      "${MANAGED_HOME_FILES[@]}"
+    verify_managed_tree_for_env "${env_name}" "${CATA_BASE_DIR_NAME}" "no" "${MANAGED_BASE_CONF_FILES[@]}"
+    verify_managed_tree_for_env "${env_name}" "${CATA_BASE_TMPLT_DIR_NAME}" "yes" "${MANAGED_TMPLT_CONF_FILES[@]}"
   done
   log_step_done "End of Step 10 - Managed diff verification completed"
 }
@@ -1275,34 +1348,20 @@ step_11() {
 
 step_13() {
   local env_name=""
-  local apps_dir=""
-  local dir_name=""
-  local dir_names=("${CATA_HOME_DIR_NAME}" "${CATA_BASE_TMPLT_DIR_NAME}" "${CATA_BASE_DIR_NAME}")
 
   log_step "Step 13 - Remove *_org Tomcat directories"
   for env_name in "${FILESYSTEM_ENVS[@]}"; do
-    apps_dir="$(apps_dir_for_env "${env_name}")"
-    for dir_name in "${dir_names[@]}"; do
-      remove_path_if_exists "$(org_dir_path "${apps_dir}/${dir_name}")" "${apps_dir}"
-    done
+    cleanup_org_dirs_for_env "${env_name}"
   done
   log_step_done "End of Step 13 - Cleanup of *_org directories completed"
 }
 
 step_14() {
   local env_name=""
-  local apps_dir=""
-  local dir_name=""
-  local archive_path=""
-  local dir_names=("${CATA_HOME_DIR_NAME}" "${CATA_BASE_TMPLT_DIR_NAME}" "${CATA_BASE_DIR_NAME}")
 
   log_step "Step 14 - Remove dated backup archives"
   for env_name in "${FILESYSTEM_ENVS[@]}"; do
-    apps_dir="$(apps_dir_for_env "${env_name}")"
-    for dir_name in "${dir_names[@]}"; do
-      archive_path="$(dated_backup_path "${apps_dir}/${dir_name}").tar.gz"
-      remove_path_if_exists "${archive_path}" "${apps_dir}"
-    done
+    cleanup_archive_files_for_env "${env_name}"
   done
   log_step_done "End of Step 14 - Cleanup of dated backup archives completed"
 }
