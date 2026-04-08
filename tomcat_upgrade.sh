@@ -50,6 +50,7 @@ DEBUG=0
 DO_CLEANUP=0
 LIST_STEPS=0
 BACKUP_FLAG="no"
+AUTO_CONTINUE=0
 
 SELECTED_ENVS=()
 FILESYSTEM_ENVS=()
@@ -76,12 +77,15 @@ Options:
       --dry-run            Print what would run, but do not execute commands
       --debug              Enable shell tracing after logging starts
       --backup-flag FLAG   yes|no. When yes, back up the whole apps directory before step 2
+      --auto-continue      Do not wait for a yes confirmation between steps
       --cleanup            Also execute step 13 and step 14
       --list-steps         Print the supported steps and exit
   -h, --help               Show this help text
 
 Notes:
   - By default the script runs step 1 through step 11.
+  - By default the script pauses after each completed step and waits for you to type yes.
+  - Use --auto-continue when you want the script to move through all selected steps without pausing.
   - When --backup-flag yes is used, an extra full apps backup runs between step 1 and step 2.
   - Cleanup is opt-in because deleting *_org and backup archives removes rollback assets.
   - The config file is a shell file and is sourced directly by this script.
@@ -203,6 +207,39 @@ log_step() {
 log_step_done() {
   log OK "$*"
   log_step_banner "$*"
+}
+
+step_label_for_number() {
+  printf 'step_%s\n' "$1"
+}
+
+wait_for_step_confirmation() {
+  local completed_label="$1"
+  local next_label="$2"
+  local answer=""
+
+  if [[ "${AUTO_CONTINUE}" -eq 1 || -z "${next_label}" ]]; then
+    return 0
+  fi
+
+  emit_plain_line ""
+  emit_plain_line "Completed ${completed_label}."
+  emit_plain_line "Type yes to continue to ${next_label}, or anything else to stop."
+  if [[ "${LOG_READY}" -eq 1 ]]; then
+    printf '> ' | tee -a "${LOG_FILE}"
+  else
+    printf '> '
+  fi
+
+  if ! IFS= read -r answer; then
+    die "Failed to read confirmation after ${completed_label}. Re-run with --auto-continue if you do not want interactive pauses."
+  fi
+
+  if [[ "${LOG_READY}" -eq 1 ]]; then
+    printf '%s\n' "${answer}" >> "${LOG_FILE}"
+  fi
+
+  [[ "${answer}" == "yes" ]] || die "Execution stopped by user after ${completed_label}"
 }
 
 quote_cmd() {
@@ -402,6 +439,10 @@ parse_args() {
         [[ $# -ge 2 ]] || die "Missing value for $1"
         BACKUP_FLAG="$2"
         shift 2
+        ;;
+      --auto-continue)
+        AUTO_CONTINUE=1
+        shift
         ;;
       --cleanup)
         DO_CLEANUP=1
@@ -1380,24 +1421,83 @@ step_14() {
 # inside step 2 handling so we do not introduce a new public step number.
 execute_steps() {
   local step_number=""
-  for step_number in "${EXECUTION_STEPS[@]}"; do
+  local next_step_number=""
+  local next_label=""
+  local pause_target=""
+  local step_index=0
+
+  for ((step_index=0; step_index<${#EXECUTION_STEPS[@]}; step_index++)); do
+    step_number="${EXECUTION_STEPS[step_index]}"
+    next_step_number=""
+    next_label=""
+    pause_target=""
+
+    if (( step_index + 1 < ${#EXECUTION_STEPS[@]} )); then
+      next_step_number="${EXECUTION_STEPS[step_index + 1]}"
+      next_label="$(step_label_for_number "${next_step_number}")"
+    fi
+
     case "${step_number}" in
-      1) step_1 ;;
-      2)
-        step_1_5_full_apps_backup
-        step_2
+      1)
+        step_1
+        pause_target="${next_label}"
+        if [[ "${BACKUP_FLAG}" == "yes" && "${next_step_number}" == "2" ]]; then
+          pause_target="step_1.5"
+        fi
+        wait_for_step_confirmation "step_1" "${pause_target}"
         ;;
-      3) step_3 ;;
-      4) step_4 ;;
-      5) step_5 ;;
-      6) step_6 ;;
-      7) step_7 ;;
-      8) step_8 ;;
-      9) step_9 ;;
-      10) step_10 ;;
-      11) step_11 ;;
-      13) step_13 ;;
-      14) step_14 ;;
+      2)
+        if [[ "${BACKUP_FLAG}" == "yes" ]]; then
+          step_1_5_full_apps_backup
+          wait_for_step_confirmation "step_1.5" "step_2"
+        fi
+        step_2
+        wait_for_step_confirmation "step_2" "${next_label}"
+        ;;
+      3)
+        step_3
+        wait_for_step_confirmation "step_3" "${next_label}"
+        ;;
+      4)
+        step_4
+        wait_for_step_confirmation "step_4" "${next_label}"
+        ;;
+      5)
+        step_5
+        wait_for_step_confirmation "step_5" "${next_label}"
+        ;;
+      6)
+        step_6
+        wait_for_step_confirmation "step_6" "${next_label}"
+        ;;
+      7)
+        step_7
+        wait_for_step_confirmation "step_7" "${next_label}"
+        ;;
+      8)
+        step_8
+        wait_for_step_confirmation "step_8" "${next_label}"
+        ;;
+      9)
+        step_9
+        wait_for_step_confirmation "step_9" "${next_label}"
+        ;;
+      10)
+        step_10
+        wait_for_step_confirmation "step_10" "${next_label}"
+        ;;
+      11)
+        step_11
+        wait_for_step_confirmation "step_11" "${next_label}"
+        ;;
+      13)
+        step_13
+        wait_for_step_confirmation "step_13" "${next_label}"
+        ;;
+      14)
+        step_14
+        wait_for_step_confirmation "step_14" "${next_label}"
+        ;;
       *) die "Unsupported step requested: ${step_number}" ;;
     esac
   done
@@ -1431,9 +1531,15 @@ main() {
   log_info "Selected filesystem targets: $(join_by ', ' "${FILESYSTEM_ENVS[@]}")"
   log_info "Target Tomcat version: ${TARGET_VERSION}"
   log_info "backup_flag: ${BACKUP_FLAG}"
+  log_info "auto_continue: $([[ "${AUTO_CONTINUE}" -eq 1 ]] && printf '%s' 'yes' || printf '%s' 'no')"
   log_info "Execution steps: $(join_by ', ' "${EXECUTION_STEPS[@]}")"
   if [[ "${DRY_RUN}" -eq 1 ]]; then
     log_dryrun "Dry-run mode is enabled. Commands will be printed but not executed."
+  fi
+  if [[ "${AUTO_CONTINUE}" -eq 1 ]]; then
+    log_info "Auto-continue is enabled. The script will not pause between steps."
+  else
+    log_info "Interactive confirmation is enabled. Type yes after each step to continue."
   fi
   if [[ "${DO_CLEANUP}" -ne 1 ]]; then
     log_info "Cleanup is disabled. Step 13 and step 14 are intentionally skipped."
