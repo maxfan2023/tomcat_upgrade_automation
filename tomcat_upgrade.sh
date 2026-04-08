@@ -33,7 +33,7 @@ LAST_CAPTURED_OUTPUT=""
 DEFAULT_CONFIG_FILE="${SCRIPT_DIR}/configs/default.conf"
 DEFAULT_STEPS=(1 2 3 4 5 6 7 8 9 10 11)
 CLEANUP_STEPS=(13 14)
-RUNTIME_SUBDIRS=(conf logs temp webapps work)
+RUNTIME_SUBDIRS=(bin conf logs temp webapps work)
 RESTORE_COMPARE_DIRS=(logs temp work)
 FULL_APPS_BACKUP_PREFIX="apps_full_backup"
 MANAGED_HOME_FILES=(catalina.bat catalina.sh)
@@ -627,6 +627,11 @@ apps_hub_dir_for_env() {
   dirname "$(apps_dir_for_env "$1")"
 }
 
+list_apps_dir_for_env() {
+  local env_name="$1"
+  run_logged_cmd ls -lrth "$(apps_dir_for_env "${env_name}")"
+}
+
 full_apps_backup_dir_for_env() {
   local env_name="$1"
   local hub_dir
@@ -723,17 +728,19 @@ current_version_matches() {
 
 verify_version_for_env() {
   local env_name="$1"
+  local apps_dir=""
   local version_script
   version_script="$(apps_dir_for_env "${env_name}")/${CATA_HOME_DIR_NAME}/bin/version.sh"
+  apps_dir="$(apps_dir_for_env "${env_name}")"
   log_info "Verifying Tomcat version for filesystem target '${env_name}'"
 
   if [[ "${DRY_RUN}" -eq 1 ]]; then
-    log_cmd "$(quote_cmd "${version_script}")"
+    run_profile_capture_command "${env_name}" "${apps_dir}" "$(quote_cmd "${version_script}")"
     return 0
   fi
 
   ensure_file_exists "${version_script}"
-  run_cmd_capture "$(quote_cmd "${version_script}")" "${version_script}" || die "Failed to execute ${version_script}"
+  run_profile_capture_command "${env_name}" "${apps_dir}" "$(quote_cmd "${version_script}")" || die "Failed to execute ${version_script}"
   [[ "${LAST_CAPTURED_OUTPUT}" == *"${TARGET_VERSION}"* ]] || die "Tomcat version check failed for ${env_name}. Output did not contain ${TARGET_VERSION}"
 }
 
@@ -910,11 +917,35 @@ run_profile_command() {
   local cwd="$2"
   shift 2
   local command_string="$*"
-  local profile
   local shell_cmd
-  profile="$(profile_for_env "${env_name}")"
-  printf -v shell_cmd 'source %q && cd %q && %s' "${profile}" "${cwd}" "${command_string}"
+  build_profile_shell_cmd shell_cmd "${env_name}" "${cwd}" "${command_string}"
   run_shell_cmd "${shell_cmd}"
+}
+
+build_profile_shell_cmd() {
+  local result_var="$1"
+  local env_name="$2"
+  local cwd="$3"
+  local command_string="$4"
+  local profile
+  local built_shell_cmd=""
+
+  profile="$(profile_for_env "${env_name}")"
+  printf -v built_shell_cmd 'source %q && cd %q && %s' "${profile}" "${cwd}" "${command_string}"
+  printf -v "${result_var}" '%s' "${built_shell_cmd}"
+}
+
+run_profile_capture_command() {
+  local env_name="$1"
+  local cwd="$2"
+  shift 2
+  local command_string="$*"
+  local shell_cmd=""
+  local display=""
+
+  build_profile_shell_cmd shell_cmd "${env_name}" "${cwd}" "${command_string}"
+  display="bash -lc $(quote_shell_string_for_display "${shell_cmd}")"
+  run_cmd_capture "${display}" bash -lc "${shell_cmd}"
 }
 
 run_optional_hook() {
@@ -1196,6 +1227,7 @@ step_2() {
   log_step "Step 2 - Back up the current Tomcat directories"
   for env_name in "${FILESYSTEM_ENVS[@]}"; do
     backup_managed_tomcat_dirs_for_env "${env_name}"
+    list_apps_dir_for_env "${env_name}"
   done
   log_step_done "End of Step 2 - Backup step completed"
 }
@@ -1241,6 +1273,7 @@ step_4() {
   log_step "Step 4 - Rename current Tomcat directories to *_org"
   for env_name in "${FILESYSTEM_ENVS[@]}"; do
     rename_managed_tomcat_dirs_for_env "${env_name}"
+    list_apps_dir_for_env "${env_name}"
   done
   log_step_done "End of Step 4 - Rename step completed"
 }
@@ -1262,29 +1295,29 @@ step_5() {
     # install command that would run after a successful rename.
     if [[ "${DRY_RUN}" -eq 1 ]]; then
       run_profile_command "${env_name}" "${apps_dir}" "ab-app install $(quote_cmd "${installer_path}")"
-      continue
+    else
+      state="$(required_dir_state "${env_name}")"
+
+      case "${state}" in
+        all)
+          if current_version_matches "${env_name}"; then
+            log_skip "Target Tomcat version already installed for ${env_name}"
+          else
+            die "Tomcat directories already exist for ${env_name}, but they do not match target version ${TARGET_VERSION}"
+          fi
+          ;;
+        partial)
+          die "Partial Tomcat installation detected for ${env_name}; please repair the filesystem state before retrying"
+          ;;
+        none)
+          run_profile_command "${env_name}" "${apps_dir}" "ab-app install $(quote_cmd "${installer_path}")"
+          ;;
+        *)
+          die "Unknown installation state '${state}' for ${env_name}"
+          ;;
+      esac
     fi
-
-    state="$(required_dir_state "${env_name}")"
-
-    case "${state}" in
-      all)
-        if current_version_matches "${env_name}"; then
-          log_skip "Target Tomcat version already installed for ${env_name}"
-          continue
-        fi
-        die "Tomcat directories already exist for ${env_name}, but they do not match target version ${TARGET_VERSION}"
-        ;;
-      partial)
-        die "Partial Tomcat installation detected for ${env_name}; please repair the filesystem state before retrying"
-        ;;
-      none)
-        run_profile_command "${env_name}" "${apps_dir}" "ab-app install $(quote_cmd "${installer_path}")"
-        ;;
-      *)
-        die "Unknown installation state '${state}' for ${env_name}"
-        ;;
-    esac
+    list_apps_dir_for_env "${env_name}"
   done
   log_step_done "End of Step 5 - Install step completed"
 }
@@ -1296,6 +1329,7 @@ step_6() {
   for env_name in "${FILESYSTEM_ENVS[@]}"; do
     verify_version_for_env "${env_name}"
     verify_required_dirs_for_env "${env_name}"
+    list_apps_dir_for_env "${env_name}"
   done
   log_step_done "End of Step 6 - Post-install verification completed"
 }
@@ -1317,6 +1351,7 @@ step_7() {
     for file_name in "${MANAGED_HOME_FILES[@]}"; do
       sync_file_if_needed "${org_bin}/${file_name}" "${current_bin}/${file_name}" "${env_name}:${file_name}"
     done
+    list_apps_dir_for_env "${env_name}"
   done
   log_step_done "End of Step 7 - Home file restore completed"
 }
@@ -1364,8 +1399,8 @@ step_10() {
   log_step_done "End of Step 10 - Managed diff verification completed"
 }
 
-# Step 11 purges runtime folders under the configured app instances and then
-# starts services for envs that are marked as service-controlled.
+# Step 11 purges the configured managed subdirectories under each app instance
+# and then starts services for envs that are marked as service-controlled.
 step_11() {
   local env_name=""
   local apps_dir=""
@@ -1399,6 +1434,9 @@ step_11() {
     [[ -n "${runner}" ]] || die "ENV_RUNNER is missing for ${env_name}"
     run_profile_command "${env_name}" "${ABINITIO_TMP_DIR}" "$(quote_cmd "${runner}" start application)"
     run_optional_hook "ENV_POST_START_CHECK_CMD" "${env_name}"
+  done
+  for env_name in "${FILESYSTEM_ENVS[@]}"; do
+    list_apps_dir_for_env "${env_name}"
   done
   log_step_done "End of Step 11 - Purge and start step completed"
 }
