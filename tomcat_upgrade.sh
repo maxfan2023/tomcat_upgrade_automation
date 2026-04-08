@@ -252,6 +252,12 @@ quote_cmd() {
   printf '%s' "${quoted[*]}"
 }
 
+quote_shell_string_for_display() {
+  local value="$1"
+  value="${value//\'/\'\\\'\'}"
+  printf "'%s'" "${value}"
+}
+
 run_logged_cmd() {
   local display
   display="$(quote_cmd "$@")"
@@ -269,7 +275,7 @@ run_logged_cmd() {
 run_shell_cmd() {
   local shell_cmd="$1"
   local display
-  printf -v display 'bash -lc %q' "${shell_cmd}"
+  display="bash -lc $(quote_shell_string_for_display "${shell_cmd}")"
   log_cmd "${display}"
   if [[ "${DRY_RUN}" -eq 1 ]]; then
     return 0
