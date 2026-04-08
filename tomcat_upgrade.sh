@@ -1208,6 +1208,16 @@ step_5() {
   log_step "Step 5 - Install the target Tomcat version"
   for env_name in "${FILESYSTEM_ENVS[@]}"; do
     apps_dir="$(apps_dir_for_env "${env_name}")"
+
+    # In dry-run mode we do not inspect the live filesystem here because step 4
+    # only printed the rename commands and did not actually move directories.
+    # To keep the preview faithful to the intended workflow, just print the
+    # install command that would run after a successful rename.
+    if [[ "${DRY_RUN}" -eq 1 ]]; then
+      run_profile_command "${env_name}" "${apps_dir}" "ab-app install $(quote_cmd "${installer_path}")"
+      continue
+    fi
+
     state="$(required_dir_state "${env_name}")"
 
     case "${state}" in
