@@ -18,7 +18,8 @@
 # Common examples:
 #   ./tomcat_upgrade.sh --dry-run
 #   ./tomcat_upgrade.sh --env ienv --backup-flag yes --dry-run
-#   ./tomcat_upgrade.sh --env ienv --version 9.0.117
+#   ./tomcat_upgrade.sh --env ienv --backup-flag yes --auto-continue --dry-run
+#   ./tomcat_upgrade.sh --env ienv --version 9.0.117 --auto-continue
 #   ./tomcat_upgrade.sh --env ienv --from-step step_9
 #   ./tomcat_upgrade.sh --env ienv --backup-flag yes --cleanup
 #
@@ -87,7 +88,9 @@ Notes:
   - By default the script pauses after each completed step and waits for you to type yes.
   - Use --auto-continue when you want the script to move through all selected steps without pausing.
   - When --backup-flag yes is used, an extra full apps backup runs between step 1 and step 2.
-  - Cleanup is opt-in because deleting *_org and backup archives removes rollback assets.
+  - Cleanup is opt-in because deleting *_org and dated backup directories removes rollback assets.
+  - Step 14 removes dated backup directories and keeps the tar.gz archives.
+  - Step 2, 4, 5, 6, 7, and 11 print ls -lrth for the apps directory after the step.
   - The config file is a shell file and is sourced directly by this script.
   - penv-cont reuses penv filesystem paths by default, but skips service stop/start.
   - The script uses the current date in DDMMYYYY format when naming backup directories.
@@ -96,16 +99,19 @@ Typical commands:
   1. Safest first pass in a dev environment
      ./tomcat_upgrade.sh --env ienv --backup-flag yes --dry-run
 
-  2. Real run for one environment with the extra full apps backup
+  2. Unattended dry-run preview for one environment
+     ./tomcat_upgrade.sh --env ienv --backup-flag yes --auto-continue --dry-run
+
+  3. Real run for one environment with the extra full apps backup
      ./tomcat_upgrade.sh --env ienv --backup-flag yes
 
-  3. Resume from a later step after manual review
+  4. Real run without step-by-step confirmation prompts
+     ./tomcat_upgrade.sh --env ienv --version 9.0.117 --auto-continue
+
+  5. Resume from a later step after manual review
      ./tomcat_upgrade.sh --env ienv --from-step step_9
 
-  4. Upgrade to a different Tomcat version
-     ./tomcat_upgrade.sh --env ienv --version 9.0.117 --backup-flag yes
-
-  5. Explicit cleanup after validation
+  6. Explicit cleanup after validation
      ./tomcat_upgrade.sh --env ienv --cleanup
 EOF
 }
@@ -135,7 +141,7 @@ step_9   Restore managed files in catalina-base-9.0-tmplt
 step_10  Compare managed restored content against *_org
 step_11  Purge runtime folders under app instances and start services
 step_13  Remove *_org Tomcat directories (only with --cleanup)
-step_14  Remove dated backup archives (only with --cleanup)
+step_14  Remove dated backup directories (only with --cleanup)
 EOF
 }
 
@@ -1175,16 +1181,16 @@ cleanup_org_dirs_for_env() {
   done
 }
 
-cleanup_archive_files_for_env() {
+cleanup_backup_dirs_for_env() {
   local env_name="$1"
   local apps_dir
   local dir_name=""
-  local archive_path=""
+  local backup_dir=""
 
   apps_dir="$(apps_dir_for_env "${env_name}")"
   for dir_name in "${MANAGED_TOMCAT_DIR_NAMES[@]}"; do
-    archive_path="$(managed_tomcat_backup_dir_path_for_env "${env_name}" "${dir_name}").tar.gz"
-    remove_path_if_exists "${archive_path}" "${apps_dir}"
+    backup_dir="$(managed_tomcat_backup_dir_path_for_env "${env_name}" "${dir_name}")"
+    remove_path_if_exists "${backup_dir}" "${apps_dir}"
   done
 }
 
@@ -1447,6 +1453,7 @@ step_13() {
   log_step "Step 13 - Remove *_org Tomcat directories"
   for env_name in "${FILESYSTEM_ENVS[@]}"; do
     cleanup_org_dirs_for_env "${env_name}"
+    list_apps_dir_for_env "${env_name}"
   done
   log_step_done "End of Step 13 - Cleanup of *_org directories completed"
 }
@@ -1454,11 +1461,12 @@ step_13() {
 step_14() {
   local env_name=""
 
-  log_step "Step 14 - Remove dated backup archives"
+  log_step "Step 14 - Remove dated backup directories"
   for env_name in "${FILESYSTEM_ENVS[@]}"; do
-    cleanup_archive_files_for_env "${env_name}"
+    cleanup_backup_dirs_for_env "${env_name}"
+    list_apps_dir_for_env "${env_name}"
   done
-  log_step_done "End of Step 14 - Cleanup of dated backup archives completed"
+  log_step_done "End of Step 14 - Cleanup of dated backup directories completed"
 }
 
 # Dispatch the selected steps in order. Step 1.5 is intentionally injected
