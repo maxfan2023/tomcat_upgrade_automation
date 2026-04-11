@@ -15,23 +15,25 @@
 #   - Prefer safe defaults: cleanup is opt-in, and risky operations are logged clearly.
 #   - Be re-runnable where possible without clobbering successful prior backups.
 #
-# Common examples:
-#   ./tomcat_upgrade.sh --dry-run
-#   ./tomcat_upgrade.sh --env ienv --backup-flag yes --dry-run
-#   ./tomcat_upgrade.sh --env ienv --backup-flag yes --auto-continue --dry-run
-#   ./tomcat_upgrade.sh --env ienv --version 9.0.117 --auto-continue
-#   ./tomcat_upgrade.sh --env ienv --from-step step_9
-#   ./tomcat_upgrade.sh --env ienv --backup-flag yes --cleanup
+# Common examples from the repository root:
+#   ./scripts/tomcat/tomcat_upgrade.sh --dry-run
+#   ./scripts/tomcat/tomcat_upgrade.sh --env ienv --backup-flag yes --dry-run
+#   ./scripts/tomcat/tomcat_upgrade.sh --env ienv --backup-flag yes --auto-continue --dry-run
+#   ./scripts/tomcat/tomcat_upgrade.sh --env ienv --version 9.0.117 --auto-continue
+#   ./scripts/tomcat/tomcat_upgrade.sh --env ienv --from-step step_9
+#   ./scripts/tomcat/tomcat_upgrade.sh --env ienv --backup-flag yes --cleanup
 #
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 PROGRAM_NAME="$(basename "$0")"
 LOG_READY=0
 LOCK_DIR=""
+ERROR_LOG_FILE=""
 LAST_CAPTURED_OUTPUT=""
 
-DEFAULT_CONFIG_FILE="${SCRIPT_DIR}/configs/default.conf"
+DEFAULT_CONFIG_FILE="${REPO_ROOT}/configs/tomcat/default.conf"
 DEFAULT_STEPS=(1 2 3 4 5 6 7 8 9 10 11)
 CLEANUP_STEPS=(13 14)
 RUNTIME_SUBDIRS=(bin conf logs temp webapps work)
@@ -63,15 +65,16 @@ START_STEP=1
 usage() {
   cat <<'EOF'
 Usage:
-  ./tomcat_upgrade.sh [options]
+  ./scripts/tomcat/tomcat_upgrade.sh [options]
 
 Summary:
   This script automates a configurable Tomcat upgrade workflow.
   It reads environment-specific values from a shell config file, prints every
   command before it runs, and can restart from a later step when needed.
+  Examples below assume the current working directory is the repository root.
 
 Options:
-  -c, --config FILE        Path to the config file. Defaults to configs/default.conf
+  -c, --config FILE        Path to the config file. Defaults to configs/tomcat/default.conf
   -e, --env LIST           Comma-separated logical env list, for example ienv,denv
   -v, --version VERSION    Target Tomcat version, for example 9.0.116
   -s, --from-step STEP     Start from a specific step, for example 9 or step_9
@@ -97,22 +100,25 @@ Notes:
 
 Typical commands:
   1. Safest first pass in a dev environment
-     ./tomcat_upgrade.sh --env ienv --backup-flag yes --dry-run
+     ./scripts/tomcat/tomcat_upgrade.sh --env ienv --backup-flag yes --dry-run
 
   2. Unattended dry-run preview for one environment
-     ./tomcat_upgrade.sh --env ienv --backup-flag yes --auto-continue --dry-run
+     ./scripts/tomcat/tomcat_upgrade.sh --env ienv --backup-flag yes --auto-continue --dry-run
 
   3. Real run for one environment with the extra full apps backup
-     ./tomcat_upgrade.sh --env ienv --backup-flag yes
+     ./scripts/tomcat/tomcat_upgrade.sh --env ienv --backup-flag yes
 
   4. Real run without step-by-step confirmation prompts
-     ./tomcat_upgrade.sh --env ienv --version 9.0.117 --auto-continue
+     ./scripts/tomcat/tomcat_upgrade.sh --env ienv --version 9.0.117 --auto-continue
 
   5. Resume from a later step after manual review
-     ./tomcat_upgrade.sh --env ienv --from-step step_9
+     ./scripts/tomcat/tomcat_upgrade.sh --env ienv --from-step step_9
 
   6. Explicit cleanup after validation
-     ./tomcat_upgrade.sh --env ienv --cleanup
+     ./scripts/tomcat/tomcat_upgrade.sh --env ienv --cleanup
+
+  7. Run with a manually selected config file
+     ./scripts/tomcat/tomcat_upgrade.sh --config configs/tomcat/default.conf --dry-run
 EOF
 }
 
@@ -149,6 +155,7 @@ die() {
   local message="${1:-Unknown error}"
   if [[ "${LOG_READY}" -eq 1 ]]; then
     log ERROR "${message}"
+    printf '%s %s [%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "❌" "ERROR" "${message}" >> "${ERROR_LOG_FILE}"
   else
     printf 'ERROR: %s\n' "${message}" >&2
   fi
@@ -182,7 +189,11 @@ log() {
 log_info() { log INFO "$*"; }
 log_ok() { log OK "$*"; }
 log_warn() { log WARN "$*"; }
-log_error() { log ERROR "$*"; }
+log_error() {
+  local message="$*"
+  log ERROR "${message}"
+  printf '%s %s [%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "❌" "ERROR" "${message}" >> "${ERROR_LOG_FILE}"
+}
 log_cmd() { log CMD "$*"; }
 log_skip() { log SKIP "$*"; }
 log_dryrun() { log DRYRUN "$*"; }
@@ -508,7 +519,9 @@ load_config() {
 init_logging() {
   mkdir -p "${LOG_DIR}" "${STATE_DIR}"
   LOG_FILE="${LOG_DIR}/tomcat_upgrade_${TARGET_VERSION}_${RUN_DATE_YYYYMMDD}.log"
+  ERROR_LOG_FILE="${LOG_FILE%.log}.err"
   : >> "${LOG_FILE}"
+  : >> "${ERROR_LOG_FILE}"
   LOG_READY=1
 
   if [[ "${DEBUG}" -eq 1 ]]; then
@@ -519,13 +532,13 @@ init_logging() {
 
 rotate_logs() {
   local cmd_display=""
-  printf -v cmd_display 'find %q -type f -name %q -mtime +%q -print -delete' \
-    "${LOG_DIR}" "*.log" "${LOG_RETENTION_DAYS}"
+  printf -v cmd_display 'find %q -type f \\( -name %q -o -name %q \\) -mtime +%q -print -delete' \
+    "${LOG_DIR}" "*.log" "*.err" "${LOG_RETENTION_DAYS}"
   log_cmd "${cmd_display}"
   if [[ "${DRY_RUN}" -eq 1 ]]; then
     return 0
   fi
-  find "${LOG_DIR}" -type f -name '*.log' -mtime +"${LOG_RETENTION_DAYS}" -print -delete || true
+  find "${LOG_DIR}" -type f \( -name '*.log' -o -name '*.err' \) -mtime +"${LOG_RETENTION_DAYS}" -print -delete || true
 }
 
 acquire_lock() {
@@ -1424,7 +1437,8 @@ step_11() {
       continue
     fi
 
-    for target in ${purge_targets}; do
+    IFS=' ' read -r -a purge_targets_array <<< "${purge_targets}"
+    for target in "${purge_targets_array[@]}"; do
       for runtime_dir in "${RUNTIME_SUBDIRS[@]}"; do
         remove_path_if_exists "${apps_dir}/${target}/${runtime_dir}" "${apps_dir}"
       done
@@ -1599,6 +1613,8 @@ main() {
 
   execute_steps
   log_ok "Tomcat upgrade workflow finished successfully"
+  printf '%s\n' "Log file: ${LOG_FILE}"
+  printf '%s\n' "Error file: ${ERROR_LOG_FILE}"
 }
 
 main "$@"
