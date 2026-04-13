@@ -344,7 +344,7 @@ run_expected_diff_cmd() {
   fi
   case "${diff_rc}" in
     1) ;;
-    0) die "no change detected between ${left_file} and ${right_file}" ;;
+    0) log INFO "no change detected between ${left_file} and ${right_file}" ;;
     *) die "diff failed with exit code ${diff_rc}: ${display}" ;;
   esac
 }
@@ -767,6 +767,7 @@ step_6_update_target_profile_ab_home() {
   run_logged_cmd \
     sed -E -i "s|^([[:space:]]*export[[:space:]]+AB_HOME=).*$|\1${TARGET_AB_HOME}|" "${TARGET_PROFILE}"
   run_expected_diff_cmd "${SOURCE_PROFILE}" "${TARGET_PROFILE}"
+  run_logged_cmd grep -n 'AB_HOME' "${TARGET_PROFILE}"
 }
 
 step_7_backup_abinitiorc() {
@@ -784,6 +785,7 @@ step_8_update_abinitiorc_java_home() {
   run_logged_cmd \
     sed -E -i "s|^([[:space:]]*AB_JAVA_HOME([[:space:]]*@[^:]+)?[[:space:]]*:[[:space:]]*).*$|\1${JAVA_HOME_TARGET}|" "${ABINITIORC_FILE}"
   run_expected_diff_cmd "${ABINITIORC_FILE}" "${ABINITIORC_BACKUP}"
+  run_logged_cmd grep -n '^[[:space:]]*AB_JAVA_HOME' "${ABINITIORC_FILE}"
 }
 
 step_9_validate_batch_profile() {
