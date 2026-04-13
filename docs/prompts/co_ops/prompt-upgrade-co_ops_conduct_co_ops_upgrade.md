@@ -154,16 +154,10 @@ installation-test
 ab-key show
 
 for benv:
-run the validation script with batch account fap41-abibatch-01 (please use dzdo - /bin/su fap41-abibatch command , not sudo ) to following command
-source /opt/abinitio/management/scripts/ab.profile.benv-V4-4-3-3
-installation-test
-ab-key show
+don't need to run the validation script with batch account
 
 for penv:
-run the validation script with batch account fap01-abibatch-01 (please use dzdo - /bin/su fap01-abibatch command , not sudo ) to following command
-source /opt/abinitio/management/scripts/ab.profile.penv-V4-4-3-3
-installation-test
-ab-key show
+don't need to run the validation script with batch account
 
 as curent login user is fap41-abiadmin (in denv,denv) or fap01-abiadmin (in penv), it needs to run "abibatch" command to switch to batch account before running above above validation command. so the source,installation-test and ab-key show command should be run in batch account, not in current login user.
 
