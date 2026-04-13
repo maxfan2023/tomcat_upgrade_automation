@@ -32,6 +32,7 @@ ERROR_LOG_FILE=""
 TARGET_HOST=""
 TARGET_HOST_SHORT=""
 CO_OPS_VERSION=""
+CO_OPS_VERSION_DASHED=""
 VERSION_TOKEN=""
 ENV_NAME_INPUT=""
 ENV_NAME=""
@@ -84,6 +85,7 @@ Required positional arguments:
                            benv example: gbl25183799.systems.uk.hsbc
                            penv example: gbl25185999.systems.uk.hsbc
   <co_ops_version>         Target co-ops version, for example 4.4.3.3
+                           or 4-4-3-3. The build command always uses dashes.
 
 Options:
   -c, --config FILE       Optional. Path to the config file.
@@ -110,7 +112,7 @@ Step list:
 Examples:
   ./scripts/co_ops/package/generate_co_ops_installation_package.sh --env denv gbl25149199.hk.hsbc 4.4.3.3 --dry-run
   ./scripts/co_ops/package/generate_co_ops_installation_package.sh --env benv gbl25183799.systems.uk.hsbc 4.4.3.3 --auto-continue
-  ./scripts/co_ops/package/generate_co_ops_installation_package.sh --env penv gbl25185999.systems.uk.hsbc 4.4.3.3 --from-step step_6
+  ./scripts/co_ops/package/generate_co_ops_installation_package.sh --env penv gbl25185999.systems.uk.hsbc 4-4-3-3 --from-step step_6
   ./scripts/co_ops/package/generate_co_ops_installation_package.sh --env denv --config configs/co_ops/package/co_ops_denv.conf gbl25149199.hk.hsbc 4.4.3.3 --dry-run
 EOF
 }
@@ -479,9 +481,12 @@ detect_current_host() {
   hostname
 }
 
-# Keep the target host contract strict: the caller must pass a full FQDN, and
-# the version must stay in dotted numeric format because later path generation
-# depends on it.
+# Keep the target host contract strict: the caller must pass a full FQDN.
+# The version may be dotted or dashed on input, then the script normalizes it
+# into all three runtime variants we need:
+#   - dotted: 4.4.3.3
+#   - dashed: 4-4-3-3
+#   - token:  4433
 validate_inputs() {
   [[ -n "${ENV_NAME_INPUT}" ]] || die "--env is required and must be one of denv, benv, penv"
   case "${ENV_NAME_INPUT}" in
@@ -489,9 +494,11 @@ validate_inputs() {
     *) die "--env must be one of denv, benv, penv" ;;
   esac
   [[ "${TARGET_HOST}" =~ ^[[:alnum:]-]+(\.[[:alnum:]-]+)+$ ]] || die "target host must be a full FQDN: ${TARGET_HOST}"
-  [[ "${CO_OPS_VERSION}" =~ ^[0-9]+(\.[0-9]+)+$ ]] || die "invalid co-ops version: ${CO_OPS_VERSION}"
+  [[ "${CO_OPS_VERSION}" =~ ^[0-9]+([.-][0-9]+)+$ ]] || die "invalid co-ops version: ${CO_OPS_VERSION}"
 
   TARGET_HOST_SHORT="${TARGET_HOST%%.*}"
+  CO_OPS_VERSION="${CO_OPS_VERSION//-/.}"
+  CO_OPS_VERSION_DASHED="${CO_OPS_VERSION//./-}"
   VERSION_TOKEN="${CO_OPS_VERSION//./}"
   START_STEP="$(normalize_step "${FROM_STEP_RAW}")" || die "invalid step value: ${FROM_STEP_RAW}"
   [[ "${START_STEP}" -ge 1 && "${START_STEP}" -le 9 ]] || die "--from-step must be between step_1 and step_9"
@@ -661,6 +668,7 @@ log_runtime_context() {
   log INFO "environment: ${ENV_NAME}"
   log INFO "target host: ${TARGET_HOST}"
   log INFO "co-ops version: ${CO_OPS_VERSION}"
+  log INFO "co-ops build version: ${CO_OPS_VERSION_DASHED}"
   log INFO "remote version directory: ${REMOTE_VERSION_DIR}"
   log INFO "allowlist entries in ${ENV_NAME}: ${#TARGET_HOST_ALLOWLIST[@]}"
   if [[ "${SKIP_BUILD_HOST_VALIDATION}" -eq 1 ]]; then
@@ -698,7 +706,8 @@ step_2_validate_local_prerequisites() {
 }
 
 # Build the package exactly in the runbook style so operators can compare the
-# printed command with the manual procedure line by line.
+# printed command with the manual procedure line by line. The build script wants
+# the version in dashed form even when the operator passes dots to this wrapper.
 step_3_build_package() {
   local shell_cmd=""
 
@@ -711,7 +720,7 @@ step_3_build_package() {
       "${BUILD_REFERENCE_XREF}" \
       "${BUILD_TARGET_FQDN}" \
       "${ENV_NAME}" \
-      "${CO_OPS_VERSION}"
+      "${CO_OPS_VERSION_DASHED}"
   else
     printf -v shell_cmd \
       'cd %q && export BUILDHOST=%q && %q -t %q -e %q -b %q' \
@@ -720,7 +729,7 @@ step_3_build_package() {
       "${BUILD_SCRIPT_RELATIVE_PATH}" \
       "${BUILD_TARGET_FQDN}" \
       "${ENV_NAME}" \
-      "${CO_OPS_VERSION}"
+      "${CO_OPS_VERSION_DASHED}"
   fi
 
   run_shell_cmd "${shell_cmd}"

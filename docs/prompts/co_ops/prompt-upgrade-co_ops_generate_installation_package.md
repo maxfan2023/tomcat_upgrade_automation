@@ -13,7 +13,7 @@ cd /FCR_APP/abinitio/tmp
 export BUILDHOST=<target_host>
 ai_build/scripts.v2/build-package.ksh -t ${BUILDHOST}.hk.hsbc -e denv -b <co_ops_version_number>
 
-<target_host> is one input parameter for the script, and <co_ops_version_number> is the version number of co-ops to be upgraded like 4.4.3.3, which is also an input parameter for the script.
+<target_host> is one input parameter for the script, and <co_ops_version_number> is the version number of co-ops to be upgraded like 4-4-3-3,  which is also an input parameter for the script 4.4.3.3, if user input 4.4.3.3, it should become 4-4-3-3 in the command.
 
 For benv:
 1. current host should be gbl25183782.systems.uk.hsbc, if it's not throw error
@@ -22,7 +22,7 @@ cd /opt/abinitio/tmp
 export BUILDHOST=<target_host>
 ai_build/scripts.v2/build-package.ksh -x ai_build/build/reference.v2/hostname-hdp11-new-server.xref -t ${BUILDHOST}.systems.uk.hsbc -e benv -b <co_ops_version_number>
 
-<target_host> is one input parameter for the script, and <co_ops_version_number> is the version number of co-ops to be upgraded like 4.4.3.3, which is also an input parameter for the script.
+<target_host> is one input parameter for the script, and <co_ops_version_number> is the version number of co-ops to be upgraded like 4-4-3-3,  which is also an input parameter for the script 4.4.3.3, if user input 4.4.3.3, it should become 4-4-3-3 in the command.
 
 For penv:
 1. current host should be gbl25185915.systems.uk.hsbc, if it's not throw error
@@ -31,7 +31,7 @@ cd /opt/abinitio/tmp
 export BUILDHOST=<target_host>
 ai_build/scripts.v2/build-package.ksh -x ai_build/build/reference.v2/hostname-hdp07-new-server.xref -t ${BUILDHOST}.systems.uk.hsbc -e penv -b <co_ops_version_number>
 
-<target_host> is one input parameter for the script, and <co_ops_version_number> is the version number of co-ops to be upgraded like 4.4.3.3, which is also an input parameter for the script.
+<target_host> is one input parameter for the script, and <co_ops_version_number> is the version number of co-ops to be upgraded like 4-4-3-3,  which is also an input parameter for the script 4.4.3.3, if user input 4.4.3.3, it should become 4-4-3-3 in the command.
 
 ## Step 2 transfer the installation package to the target host and unzip it
 
