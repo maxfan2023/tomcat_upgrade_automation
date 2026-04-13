@@ -68,16 +68,19 @@ create source profile with following command
 
 cp /opt/abinitio/management/scripts/ab.profile.denv-V4-4-1-0 /opt/abinitio/management/scripts/ab.profile.denv-V4-4-3-3
 scan line starts with "export AB_HOME" in the new created profile, and update the AB_HOME path to /opt/abinitio/denv/abinitio/abinitio-V4-4-3-3, if the line is not found, throw error
+then compare /opt/abinitio/management/scripts/ab.profile.denv-V4-4-1-0 /opt/abinitio/management/scripts/ab.profile.denv-V4-4-3-3 with diff command to show the changes, if there's no change, throw error, if there's change, print the change to log file.
 
 for benv:
 create source profile with following command
 cp /opt/abinitio/management/scripts/ab.profile.benv-V4-4-1-0 /opt/abinitio/management/scripts/ab.profile.benv-V4-4-3-3
 scan line starts with "export AB_HOME" in the new created profile, and update the AB_HOME path to /opt/abinitio/benv/abinitio/abinitio-V4-4-3-3, if the line is not found, throw error
+then compare /opt/abinitio/management/scripts/ab.profile.benv-V4-4-1-0 /opt/abinitio/management/scripts/ab.profile.benv-V4-4-3-3 with diff command to show the changes, if there's no change, throw error, if there's change, print the change to log file.
 
 for penv:
 create source profile with following command
 cp /opt/abinitio/management/scripts/ab.profile.penv-V4-4-1-0 /opt/abinitio/management/scripts/ab.profile.penv-V4-4-3-3
 scan line starts with "export AB_HOME" in the new created profile, and update the AB_HOME path to /opt/abinitio/penv/abinitio/abinitio-V4-4-3-3, if the line is not found, throw error
+then compare /opt/abinitio/management/scripts/ab.profile.penv-V4-4-1-0 /opt/abinitio/management/scripts/ab.profile.penv-V4-4-3-3 with diff command to show the changes, if there's no change, throw error, if there's change, print the change to log file.
 
 ## Step 5 Update abinitiorc file
 
@@ -86,6 +89,8 @@ update abinitiorc file with following command
 
 cp /opt/abinitio/denv/abinitio/abinitio-V4-4-3-3/config/abinitiorc /opt/abinitio/denv/abinitio/abinitio-V4-4-3-3/config/abinitiorc_bkp_<DDMMYYYY>
 scan line starts with "AB_JAVA_HOME" in /opt/abinitio/denv/abinitio/abinitio-V4-4-3-3/config/abinitiorc, then update the value after ":" to "/opt/abinitio/java/jdk11".
+
+then compare /opt/abinitio/denv/abinitio/abinitio-V4-4-3-3/config/abinitiorc /opt/abinitio/denv/abinitio/abinitio-V4-4-3-3/config/abinitiorc_bkp_<DDMMYYYY> with diff command to show the changes, if there's no change, throw error, if there's change, print the change to log file.
 
 for example, if there are following two line in the abinitiorc file
 
@@ -104,7 +109,7 @@ update abinitiorc file with following command
 
 cp /opt/abinitio/benv/abinitio/abinitio-V4-4-3-3/config/abinitiorc /opt/abinitio/benv/abinitio/abinitio-V4-4-3-3/config/abinitiorc_bkp_<DDMMYYYY>
 scan line starts with "AB_JAVA_HOME" in /opt/abinitio/benv/abinitio/abinitio-V4-4-3-3/config/abinitiorc, then update the value after ":" to "/opt/abinitio/java/jdk11".
-
+then compare /opt/abinitio/denv/abinitio/abinitio-V4-4-3-3/config/abinitiorc /opt/abinitio/denv/abinitio/abinitio-V4-4-3-3/config/abinitiorc_bkp_<DDMMYYYY> with diff command to show the changes, if there's no change, throw error, if there's change, print the change to log file.
 for example, if there are following two line in the abinitiorc file
 
 AB_JAVA_HOME                         @ abinitio-dgw-uat-hdp11 : /hadoop/java
@@ -122,6 +127,7 @@ update abinitiorc file with following command
 
 cp /opt/abinitio/penv/abinitio/abinitio-V4-4-3-3/config/abinitiorc /opt/abinitio/penv/abinitio/abinitio-V4-4-3-3/config/abinitiorc_bkp_<DDMMYYYY>
 scan line starts with "AB_JAVA_HOME" in /opt/abinitio/penv/abinitio/abinitio-V4-4-3-3/config/abinitiorc, then update the value after ":" to "/opt/abinitio/java/jdk11".
+then compare /opt/abinitio/denv/abinitio/abinitio-V4-4-3-3/config/abinitiorc /opt/abinitio/denv/abinitio/abinitio-V4-4-3-3/config/abinitiorc_bkp_<DDMMYYYY> with diff command to show the changes, if there's no change, throw error, if there's change, print the change to log file.
 
 for example, if there are following two line in the abinitiorc file
 
@@ -140,26 +146,55 @@ AB_JAVA_HOME                         @ abinitio-prod-hdp07-dn : /opt/abinitio/ja
 ## Step 6 Validate the co-ops upgrade result with batch profile
 
 for denv:
-run the validation script with batch account fap41-abibatch-01  to following command
+run the validation script with batch account fap41-abibatch-01 (please use dzdo - /bin/su fap41-abibatch command , not sudo ) to following command
 
 source /opt/abinitio/management/scripts/ab.profile.denv-V4-4-3-3
 installation-test
 ab-key show
 
 for benv:
-run the validation script with batch account fap41-abibatch-01  to following command
+run the validation script with batch account fap41-abibatch-01 (please use dzdo - /bin/su fap41-abibatch command , not sudo ) to following command
 source /opt/abinitio/management/scripts/ab.profile.benv-V4-4-3-3
 installation-test
 ab-key show
 
 for penv:
-run the validation script with batch account fap01-abibatch-01  to following command
+run the validation script with batch account fap01-abibatch-01 (please use dzdo - /bin/su fap01-abibatch command , not sudo ) to following command
 source /opt/abinitio/management/scripts/ab.profile.penv-V4-4-3-3
 installation-test
 ab-key show
 
 as curent login user is fap41-abiadmin (in denv,denv) or fap01-abiadmin (in penv), it needs to run "abibatch" command to switch to batch account before running above above validation command. so the source,installation-test and ab-key show command should be run in batch account, not in current login user.
 
+
+## Step 7 Archive the tomcat 10 directory 
+
+for denv:
+tar -czf /opt/abinitio/denv/abinitio-app-hub/apps/catalina-base-10.1.tgz /opt/abinitio/denv/abinitio-app/hub/apps/catalina-base-10.1
+tar -czf /opt/abinitio/denv/abinitio-app-hub/apps/catalina-base-10.1-tmplt.tgz /opt/abinitio/denv/abinitio-app/hub/apps/catalina-base-10.1-tmplt
+tar -czf /opt/abinitio/denv/abinitio-app-hub/apps/catalina-home-10.1.tgz /opt/abinitio/denv/abinitio-app/hub/apps/catalina-home-10.1
+
+rm -rf /opt/abinitio/denv/abinitio-app/hub/apps/catalina-base-10.1
+rm -rf /opt/abinitio/denv/abinitio-app/hub/apps/catalina-base-10.1-tmplt
+rm -rf /opt/abinitio/denv/abinitio-app/hub/apps/catalina-home-10.1
+
+for benv:
+tar -czf /opt/abinitio/benv/abinitio-app-hub/apps/catalina-base-10.1.tgz /opt/abinitio/benv/abinitio-app/hub/apps/catalina-base-10.1
+tar -czf /opt/abinitio/benv/abinitio-app-hub/apps/catalina-base-10.1-tmplt.tgz /opt/abinitio/benv/abinitio-app/hub/apps/catalina-base-10.1-tmplt
+tar -czf /opt/abinitio/benv/abinitio-app-hub/apps/catalina-home-10.1.tgz /opt/abinitio/benv/abinitio-app/hub/apps/catalina-home-10.1
+
+rm -rf /opt/abinitio/benv/abinitio-app/hub/apps/catalina-base-10.1
+rm -rf /opt/abinitio/benv/abinitio-app/hub/apps/catalina-base-10.1-tmplt
+rm -rf /opt/abinitio/benv/abinitio-app/hub/apps/catalina-home-10.1
+
+for penv:
+tar -czf /opt/abinitio/penv/abinitio-app-hub/apps/catalina-base-10.1.tgz /opt/abinitio/penv/abinitio-app/hub/apps/catalina-base-10.1
+tar -czf /opt/abinitio/penv/abinitio-app-hub/apps/catalina-base-10.1-tmplt.tgz /opt/abinitio/penv/abinitio-app/hub/apps/catalina-base-10.1-tmplt
+tar -czf /opt/abinitio/penv/abinitio-app-hub/apps/catalina-home-10.1.tgz /opt/abinitio/penv/abinitio-app/hub/apps/catalina-home-10.1
+
+rm -rf /opt/abinitio/penv/abinitio-app/hub/apps/catalina-base-10.1
+rm -rf /opt/abinitio/penv/abinitio-app/hub/apps/catalina-base-10.1-tmplt
+rm -rf /opt/abinitio/penv/abinitio-app/hub/apps/catalina-home-10.1
 
 # 2. the requirement of the script is as below
 

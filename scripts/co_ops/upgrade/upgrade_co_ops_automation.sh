@@ -20,7 +20,8 @@
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+SCRIPT_REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." 2>/dev/null && pwd || true)"
+REPO_ROOT="${REPO_ROOT:-$(pwd)}"
 PROGRAM_NAME="$(basename "$0")"
 CONFIG_DIR="${REPO_ROOT}/configs/co_ops/upgrade"
 
@@ -69,6 +70,9 @@ TARGET_PROFILE=""
 SOURCE_PROFILE=""
 ABINITIORC_FILE=""
 ABINITIORC_BACKUP=""
+ENV_ROOT=""
+TOMCAT_SOURCE_APPS_DIR=""
+TOMCAT_ARCHIVE_APPS_DIR=""
 
 EXECUTION_STEPS=()
 
@@ -110,6 +114,7 @@ Step list:
   step_7  Backup abinitiorc with the current date suffix
   step_8  Update all AB_JAVA_HOME entries in abinitiorc
   step_9  Validate the upgraded co-ops with the batch profile
+  step_10 Archive tomcat 10 directories
 
 Examples:
   ./scripts/co_ops/upgrade/upgrade_co_ops_automation.sh 4.4.3.3 --dry-run
@@ -148,6 +153,7 @@ step_title() {
     7) printf '%s\n' "Backup abinitiorc" ;;
     8) printf '%s\n' "Update AB_JAVA_HOME in abinitiorc" ;;
     9) printf '%s\n' "Validate upgraded co-ops with batch profile" ;;
+    10) printf '%s\n' "Archive tomcat 10 directories" ;;
     *) printf '%s\n' "Unknown step" ;;
   esac
 }
@@ -309,6 +315,41 @@ run_shell_cmd() {
   fi
 }
 
+run_expected_diff_cmd() {
+  local left_file="$1"
+  local right_file="$2"
+  local display=""
+  local diff_rc=0
+  local tee_rc=0
+  local err_trap_state=""
+
+  display="$(display_cmd diff -u "${left_file}" "${right_file}")"
+  log CMD "${display}"
+  if [[ "${DRY_RUN}" -eq 1 ]]; then
+    log DRYRUN "command not executed because --dry-run is enabled"
+    return 0
+  fi
+
+  err_trap_state="$(trap -p ERR || true)"
+  trap - ERR
+  set +e
+  diff -u "${left_file}" "${right_file}" 2>&1 | tee -a "${LOG_FILE}"
+  diff_rc=${PIPESTATUS[0]}
+  tee_rc=${PIPESTATUS[1]:-0}
+  set -e
+  if [[ -n "${err_trap_state}" ]]; then
+    eval "${err_trap_state}"
+  fi
+  if [[ "${tee_rc}" -ne 0 ]]; then
+    die "failed to write command output to log while running: ${display}"
+  fi
+  case "${diff_rc}" in
+    1) ;;
+    0) die "no change detected between ${left_file} and ${right_file}" ;;
+    *) die "diff failed with exit code ${diff_rc}: ${display}" ;;
+  esac
+}
+
 rotate_logs() {
   local display=""
   display="$(display_cmd find "${LOG_DIR}" -type f \( -name '*.log' -o -name '*.err' \) -mtime "+${LOG_RETENTION_DAYS}" -print -delete)"
@@ -351,8 +392,13 @@ on_error() {
 }
 
 ensure_required_commands() {
-  local commands=(awk bash chmod cmp cp date find grep hostname id mkdir mktemp mv rm sed sudo tee test)
+  local commands=(awk bash chmod cmp cp date diff find grep hostname id mkdir mktemp mv rm sed tar tee test)
   local cmd=""
+
+  if [[ "${DRY_RUN}" -eq 0 ]]; then
+    commands+=(dzdo)
+  fi
+
   for cmd in "${commands[@]}"; do
     command -v "${cmd}" >/dev/null 2>&1 || die "required command not found: ${cmd}"
   done
@@ -428,7 +474,24 @@ parse_args() {
 
 default_config_file_for_env() {
   local env_name="$1"
-  printf '%s/co_ops_upgrade_%s.conf\n' "${CONFIG_DIR}" "${env_name}"
+  local local_copy="${REPO_ROOT}/co_ops_upgrade_${env_name}.conf"
+  local repo_copy="${CONFIG_DIR}/co_ops_upgrade_${env_name}.conf"
+  local script_copy="${SCRIPT_DIR}/co_ops_upgrade_${env_name}.conf"
+  local derived_repo_copy="${SCRIPT_REPO_ROOT}/configs/co_ops/upgrade/co_ops_upgrade_${env_name}.conf"
+
+  if [[ -f "${local_copy}" ]]; then
+    printf '%s\n' "${local_copy}"
+    return 0
+  fi
+  if [[ -f "${repo_copy}" ]]; then
+    printf '%s\n' "${repo_copy}"
+    return 0
+  fi
+  if [[ -f "${script_copy}" ]]; then
+    printf '%s\n' "${script_copy}"
+    return 0
+  fi
+  printf '%s\n' "${derived_repo_copy}"
 }
 
 detect_current_host() {
@@ -463,7 +526,7 @@ validate_inputs() {
   VERSION_TOKEN="${CO_OPS_VERSION//./}"
   VERSION_LABEL="V${CO_OPS_VERSION_DASHED}"
   START_STEP="$(normalize_step "${FROM_STEP_RAW}")" || die "invalid step value: ${FROM_STEP_RAW}"
-  [[ "${START_STEP}" -ge 1 && "${START_STEP}" -le 9 ]] || die "--from-step must be between step_1 and step_9"
+  [[ "${START_STEP}" -ge 1 && "${START_STEP}" -le 10 ]] || die "--from-step must be between step_1 and step_10"
 }
 
 detect_env_from_current_host() {
@@ -543,6 +606,9 @@ derive_runtime_paths() {
   SOURCE_PROFILE="${MANAGEMENT_PROFILE_DIR}/${PROFILE_PREFIX}-${source_version_label}"
   ABINITIORC_FILE="${TARGET_AB_HOME}/config/abinitiorc"
   ABINITIORC_BACKUP="${ABINITIORC_FILE}_bkp_$(date +%d%m%Y)"
+  ENV_ROOT="${ABINITIO_BASE_DIR%/abinitio}"
+  TOMCAT_SOURCE_APPS_DIR="${ENV_ROOT}/abinitio-app/hub/apps"
+  TOMCAT_ARCHIVE_APPS_DIR="${ENV_ROOT}/abinitio-app-hub/apps"
 }
 
 init_logging() {
@@ -562,7 +628,7 @@ init_logging() {
 build_execution_steps() {
   local step=""
   EXECUTION_STEPS=()
-  for step in 1 2 3 4 5 6 7 8 9; do
+  for step in 1 2 3 4 5 6 7 8 9 10; do
     if [[ "${step}" -ge "${START_STEP}" ]]; then
       EXECUTION_STEPS+=("${step}")
     fi
@@ -702,6 +768,7 @@ step_6_update_target_profile_ab_home() {
     grep -Eq '^[[:space:]]*export[[:space:]]+AB_HOME=' "${TARGET_PROFILE}"
   run_logged_cmd \
     sed -E -i "s|^([[:space:]]*export[[:space:]]+AB_HOME=).*$|\1${TARGET_AB_HOME}|" "${TARGET_PROFILE}"
+  run_expected_diff_cmd "${SOURCE_PROFILE}" "${TARGET_PROFILE}"
 }
 
 step_7_backup_abinitiorc() {
@@ -718,17 +785,45 @@ step_8_update_abinitiorc_java_home() {
     grep -Eq '^[[:space:]]*AB_JAVA_HOME([[:space:]]|$)' "${ABINITIORC_FILE}"
   run_logged_cmd \
     sed -E -i "s|^([[:space:]]*AB_JAVA_HOME([[:space:]]*@[^:]+)?[[:space:]]*:[[:space:]]*).*$|\1${JAVA_HOME_TARGET}|" "${ABINITIORC_FILE}"
+  run_expected_diff_cmd "${ABINITIORC_BACKUP}" "${ABINITIORC_FILE}"
 }
 
 step_9_validate_batch_profile() {
   local shell_cmd=""
 
-  shell_cmd="sudo /bin/su - ${BATCH_USER} <<'AB_BATCH_VALIDATE'
+  shell_cmd="dzdo /bin/su - ${BATCH_USER} <<'AB_BATCH_VALIDATE'
 source ${TARGET_PROFILE}
 installation-test
 ab-key show
 AB_BATCH_VALIDATE"
   run_shell_cmd "${shell_cmd}"
+}
+
+archive_tomcat_dir() {
+  local source_dir="$1"
+  local archive_file="$2"
+
+  if [[ -f "${archive_file}" && ! -d "${source_dir}" ]]; then
+    log INFO "archive already exists and source directory is gone: ${archive_file}"
+    return 0
+  fi
+
+  run_logged_cmd test -d "${source_dir}"
+  run_logged_cmd tar -czf "${archive_file}" "${source_dir}"
+  run_logged_cmd rm -rf "${source_dir}"
+}
+
+step_10_archive_tomcat_10_directories() {
+  run_logged_cmd mkdir -p "${TOMCAT_ARCHIVE_APPS_DIR}"
+  archive_tomcat_dir \
+    "${TOMCAT_SOURCE_APPS_DIR}/catalina-base-10.1" \
+    "${TOMCAT_ARCHIVE_APPS_DIR}/catalina-base-10.1.tgz"
+  archive_tomcat_dir \
+    "${TOMCAT_SOURCE_APPS_DIR}/catalina-base-10.1-tmplt" \
+    "${TOMCAT_ARCHIVE_APPS_DIR}/catalina-base-10.1-tmplt.tgz"
+  archive_tomcat_dir \
+    "${TOMCAT_SOURCE_APPS_DIR}/catalina-home-10.1" \
+    "${TOMCAT_ARCHIVE_APPS_DIR}/catalina-home-10.1.tgz"
 }
 
 run_step() {
@@ -742,6 +837,7 @@ run_step() {
     7) step_7_backup_abinitiorc ;;
     8) step_8_update_abinitiorc_java_home ;;
     9) step_9_validate_batch_profile ;;
+    10) step_10_archive_tomcat_10_directories ;;
     *) die "unknown step: $1" ;;
   esac
 }
@@ -770,8 +866,8 @@ execute_selected_steps() {
 }
 
 main() {
-  ensure_required_commands
   parse_args "$@"
+  ensure_required_commands
   validate_inputs
   detect_env_from_current_host
   load_config
