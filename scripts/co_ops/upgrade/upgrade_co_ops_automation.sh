@@ -71,8 +71,7 @@ SOURCE_PROFILE=""
 ABINITIORC_FILE=""
 ABINITIORC_BACKUP=""
 ENV_ROOT=""
-TOMCAT_SOURCE_APPS_DIR=""
-TOMCAT_ARCHIVE_APPS_DIR=""
+TOMCAT_APPS_DIR=""
 
 EXECUTION_STEPS=()
 
@@ -607,8 +606,7 @@ derive_runtime_paths() {
   ABINITIORC_FILE="${TARGET_AB_HOME}/config/abinitiorc"
   ABINITIORC_BACKUP="${ABINITIORC_FILE}_bkp_$(date +%d%m%Y)"
   ENV_ROOT="${ABINITIO_BASE_DIR%/abinitio}"
-  TOMCAT_SOURCE_APPS_DIR="${ENV_ROOT}/abinitio-app/hub/apps"
-  TOMCAT_ARCHIVE_APPS_DIR="${ENV_ROOT}/abinitio-app-hub/apps"
+  TOMCAT_APPS_DIR="${ENV_ROOT}/abinitio-app-hub/apps"
 }
 
 init_logging() {
@@ -785,7 +783,7 @@ step_8_update_abinitiorc_java_home() {
     grep -Eq '^[[:space:]]*AB_JAVA_HOME([[:space:]]|$)' "${ABINITIORC_FILE}"
   run_logged_cmd \
     sed -E -i "s|^([[:space:]]*AB_JAVA_HOME([[:space:]]*@[^:]+)?[[:space:]]*:[[:space:]]*).*$|\1${JAVA_HOME_TARGET}|" "${ABINITIORC_FILE}"
-  run_expected_diff_cmd "${ABINITIORC_BACKUP}" "${ABINITIORC_FILE}"
+  run_expected_diff_cmd "${ABINITIORC_FILE}" "${ABINITIORC_BACKUP}"
 }
 
 step_9_validate_batch_profile() {
@@ -814,16 +812,17 @@ archive_tomcat_dir() {
 }
 
 step_10_archive_tomcat_10_directories() {
-  run_logged_cmd mkdir -p "${TOMCAT_ARCHIVE_APPS_DIR}"
+  run_logged_cmd mkdir -p "${TOMCAT_APPS_DIR}"
   archive_tomcat_dir \
-    "${TOMCAT_SOURCE_APPS_DIR}/catalina-base-10.1" \
-    "${TOMCAT_ARCHIVE_APPS_DIR}/catalina-base-10.1.tgz"
+    "${TOMCAT_APPS_DIR}/catalina-base-10.1" \
+    "${TOMCAT_APPS_DIR}/catalina-base-10.1.tgz"
   archive_tomcat_dir \
-    "${TOMCAT_SOURCE_APPS_DIR}/catalina-base-10.1-tmplt" \
-    "${TOMCAT_ARCHIVE_APPS_DIR}/catalina-base-10.1-tmplt.tgz"
+    "${TOMCAT_APPS_DIR}/catalina-base-10.1-tmplt" \
+    "${TOMCAT_APPS_DIR}/catalina-base-10.1-tmplt.tgz"
   archive_tomcat_dir \
-    "${TOMCAT_SOURCE_APPS_DIR}/catalina-home-10.1" \
-    "${TOMCAT_ARCHIVE_APPS_DIR}/catalina-home-10.1.tgz"
+    "${TOMCAT_APPS_DIR}/catalina-home-10.1" \
+    "${TOMCAT_APPS_DIR}/catalina-home-10.1.tgz"
+  run_logged_cmd ls -lrth "${TOMCAT_APPS_DIR}/"
 }
 
 run_step() {
