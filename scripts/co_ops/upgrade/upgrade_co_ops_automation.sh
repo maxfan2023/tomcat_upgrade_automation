@@ -789,18 +789,16 @@ step_8_update_abinitiorc_java_home() {
 step_9_validate_batch_profile() {
   local shell_cmd=""
 
-  if [[ "${ENV_NAME}" == "denv" ]]; then
-    shell_cmd="dzdo /bin/su - ${BATCH_USER} <<'AB_BATCH_VALIDATE'
+  if [[ "${ENV_NAME}" != "denv" ]]; then
+    log INFO "step_9 is skipped for ${ENV_NAME}; batch-account validation is only required in denv"
+    return 0
+  fi
+
+  shell_cmd="dzdo /bin/su - ${BATCH_USER} <<'AB_BATCH_VALIDATE'
 source ${TARGET_PROFILE}
 installation-test
 ab-key show
 AB_BATCH_VALIDATE"
-  else
-    printf -v shell_cmd \
-      'source %q && installation-test && ab-key show' \
-      "${TARGET_PROFILE}"
-  fi
-
   run_shell_cmd "${shell_cmd}"
 }
 
