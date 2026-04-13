@@ -29,6 +29,7 @@ LOCK_DIR=""
 ERROR_LOG_FILE=""
 
 CO_OPS_VERSION="4.4.3.3"
+CO_OPS_VERSION_DASHED=""
 VERSION_TOKEN=""
 VERSION_LABEL=""
 ENV_NAME_INPUT=""
@@ -83,6 +84,7 @@ Summary:
 
 Positional arguments:
   <co_ops_version>         Optional. Target co-ops version, for example 4.4.3.3
+                           or 4-4-3-3
                            Default: 4.4.3.3
 
 Options:
@@ -112,7 +114,7 @@ Step list:
 Examples:
   ./scripts/co_ops/upgrade/upgrade_co_ops_automation.sh 4.4.3.3 --dry-run
   ./scripts/co_ops/upgrade/upgrade_co_ops_automation.sh --env benv 4.4.3.3 --auto-continue
-  ./scripts/co_ops/upgrade/upgrade_co_ops_automation.sh 4.4.3.3 --from-step step_6
+  ./scripts/co_ops/upgrade/upgrade_co_ops_automation.sh 4-4-3-3 --from-step step_6
   ./scripts/co_ops/upgrade/upgrade_co_ops_automation.sh --env denv --config configs/co_ops/upgrade/co_ops_upgrade_denv.conf 4.4.3.3 --dry-run
 EOF
 }
@@ -455,9 +457,11 @@ validate_inputs() {
     esac
   fi
 
-  [[ "${CO_OPS_VERSION}" =~ ^[0-9]+(\.[0-9]+)+$ ]] || die "invalid co-ops version: ${CO_OPS_VERSION}"
+  [[ "${CO_OPS_VERSION}" =~ ^[0-9]+([.-][0-9]+)+$ ]] || die "invalid co-ops version: ${CO_OPS_VERSION}"
+  CO_OPS_VERSION="${CO_OPS_VERSION//-/.}"
+  CO_OPS_VERSION_DASHED="${CO_OPS_VERSION//./-}"
   VERSION_TOKEN="${CO_OPS_VERSION//./}"
-  VERSION_LABEL="V${CO_OPS_VERSION//./-}"
+  VERSION_LABEL="V${CO_OPS_VERSION_DASHED}"
   START_STEP="$(normalize_step "${FROM_STEP_RAW}")" || die "invalid step value: ${FROM_STEP_RAW}"
   [[ "${START_STEP}" -ge 1 && "${START_STEP}" -le 9 ]] || die "--from-step must be between step_1 and step_9"
 }
@@ -607,6 +611,7 @@ log_runtime_context() {
   log INFO "current user: ${CURRENT_USER}"
   log INFO "environment: ${ENV_NAME}"
   log INFO "co-ops version: ${CO_OPS_VERSION}"
+  log INFO "co-ops version label: ${CO_OPS_VERSION_DASHED}"
   log INFO "package directory: ${REMOTE_VERSION_DIR}"
   log INFO "package file: ${PACKAGE_FILE}"
   log INFO "upgrade runner: ${UPGRADE_RUNNER}"
