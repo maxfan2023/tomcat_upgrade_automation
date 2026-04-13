@@ -109,6 +109,7 @@ update abinitiorc file with following command
 
 cp /opt/abinitio/benv/abinitio/abinitio-V4-4-3-3/config/abinitiorc /opt/abinitio/benv/abinitio/abinitio-V4-4-3-3/config/abinitiorc_bkp_<DDMMYYYY>
 scan line starts with "AB_JAVA_HOME" in /opt/abinitio/benv/abinitio/abinitio-V4-4-3-3/config/abinitiorc, then update the value after ":" to "/opt/abinitio/java/jdk11".
+
 then compare /opt/abinitio/denv/abinitio/abinitio-V4-4-3-3/config/abinitiorc /opt/abinitio/denv/abinitio/abinitio-V4-4-3-3/config/abinitiorc_bkp_<DDMMYYYY> with diff command to show the changes, if there's no change, throw error, if there's change, print the change to log file.
 for example, if there are following two line in the abinitiorc file
 
@@ -127,7 +128,7 @@ update abinitiorc file with following command
 
 cp /opt/abinitio/penv/abinitio/abinitio-V4-4-3-3/config/abinitiorc /opt/abinitio/penv/abinitio/abinitio-V4-4-3-3/config/abinitiorc_bkp_<DDMMYYYY>
 scan line starts with "AB_JAVA_HOME" in /opt/abinitio/penv/abinitio/abinitio-V4-4-3-3/config/abinitiorc, then update the value after ":" to "/opt/abinitio/java/jdk11".
-then compare /opt/abinitio/denv/abinitio/abinitio-V4-4-3-3/config/abinitiorc /opt/abinitio/denv/abinitio/abinitio-V4-4-3-3/config/abinitiorc_bkp_<DDMMYYYY> with diff command to show the changes, if there's no change, throw error, if there's change, print the change to log file.
+then compare /opt/abinitio/penv/abinitio/abinitio-V4-4-3-3/config/abinitiorc /opt/abinitio/penv/abinitio/abinitio-V4-4-3-3/config/abinitiorc_bkp_<DDMMYYYY> with diff command to show the changes, if there's no change, throw error, if there's change, print the change to log file.
 
 for example, if there are following two line in the abinitiorc file
 
@@ -170,31 +171,37 @@ as curent login user is fap41-abiadmin (in denv,denv) or fap01-abiadmin (in penv
 ## Step 7 Archive the tomcat 10 directory 
 
 for denv:
-tar -czf /opt/abinitio/denv/abinitio-app-hub/apps/catalina-base-10.1.tgz /opt/abinitio/denv/abinitio-app/hub/apps/catalina-base-10.1
-tar -czf /opt/abinitio/denv/abinitio-app-hub/apps/catalina-base-10.1-tmplt.tgz /opt/abinitio/denv/abinitio-app/hub/apps/catalina-base-10.1-tmplt
-tar -czf /opt/abinitio/denv/abinitio-app-hub/apps/catalina-home-10.1.tgz /opt/abinitio/denv/abinitio-app/hub/apps/catalina-home-10.1
+tar -czf /opt/abinitio/denv/abinitio-app-hub/apps/catalina-base-10.1.tgz /opt/abinitio/denv/abinitio-app-hub/apps/catalina-base-10.1
+tar -czf /opt/abinitio/denv/abinitio-app-hub/apps/catalina-base-10.1-tmplt.tgz /opt/abinitio/denv/abinitio-app-hub/apps/catalina-base-10.1-tmplt
+tar -czf /opt/abinitio/denv/abinitio-app-hub/apps/catalina-home-10.1.tgz /opt/abinitio/denv/abinitio-app-hub/apps/catalina-home-10.1
 
-rm -rf /opt/abinitio/denv/abinitio-app/hub/apps/catalina-base-10.1
-rm -rf /opt/abinitio/denv/abinitio-app/hub/apps/catalina-base-10.1-tmplt
-rm -rf /opt/abinitio/denv/abinitio-app/hub/apps/catalina-home-10.1
+rm -rf /opt/abinitio/denv/abinitio-app-hub/apps/catalina-base-10.1
+rm -rf /opt/abinitio/denv/abinitio-app-hub/apps/catalina-base-10.1-tmplt
+rm -rf /opt/abinitio/denv/abinitio-app-hub/apps/catalina-home-10.1
+
+then ls -lrth /opt/abinitio/denv/abinitio-app-hub/apps/
 
 for benv:
-tar -czf /opt/abinitio/benv/abinitio-app-hub/apps/catalina-base-10.1.tgz /opt/abinitio/benv/abinitio-app/hub/apps/catalina-base-10.1
-tar -czf /opt/abinitio/benv/abinitio-app-hub/apps/catalina-base-10.1-tmplt.tgz /opt/abinitio/benv/abinitio-app/hub/apps/catalina-base-10.1-tmplt
-tar -czf /opt/abinitio/benv/abinitio-app-hub/apps/catalina-home-10.1.tgz /opt/abinitio/benv/abinitio-app/hub/apps/catalina-home-10.1
+tar -czf /opt/abinitio/benv/abinitio-app-hub/apps/catalina-base-10.1.tgz /opt/abinitio/benv/abinitio-app-hub/apps/catalina-base-10.1
+tar -czf /opt/abinitio/benv/abinitio-app-hub/apps/catalina-base-10.1-tmplt.tgz /opt/abinitio/benv/abinitio-app-hub/apps/catalina-base-10.1-tmplt
+tar -czf /opt/abinitio/benv/abinitio-app-hub/apps/catalina-home-10.1.tgz /opt/abinitio/benv/abinitio-app-hub/apps/catalina-home-10.1
 
-rm -rf /opt/abinitio/benv/abinitio-app/hub/apps/catalina-base-10.1
-rm -rf /opt/abinitio/benv/abinitio-app/hub/apps/catalina-base-10.1-tmplt
-rm -rf /opt/abinitio/benv/abinitio-app/hub/apps/catalina-home-10.1
+rm -rf /opt/abinitio/benv/abinitio-app-hub/apps/catalina-base-10.1
+rm -rf /opt/abinitio/benv/abinitio-app-hub/apps/catalina-base-10.1-tmplt
+rm -rf /opt/abinitio/benv/abinitio-app-hub/apps/catalina-home-10.1
+
+then ls -lrth /opt/abinitio/benv/abinitio-app-hub/apps/
 
 for penv:
-tar -czf /opt/abinitio/penv/abinitio-app-hub/apps/catalina-base-10.1.tgz /opt/abinitio/penv/abinitio-app/hub/apps/catalina-base-10.1
-tar -czf /opt/abinitio/penv/abinitio-app-hub/apps/catalina-base-10.1-tmplt.tgz /opt/abinitio/penv/abinitio-app/hub/apps/catalina-base-10.1-tmplt
-tar -czf /opt/abinitio/penv/abinitio-app-hub/apps/catalina-home-10.1.tgz /opt/abinitio/penv/abinitio-app/hub/apps/catalina-home-10.1
+tar -czf /opt/abinitio/penv/abinitio-app-hub/apps/catalina-base-10.1.tgz /opt/abinitio/penv/abinitio-app-hub/apps/catalina-base-10.1
+tar -czf /opt/abinitio/penv/abinitio-app-hub/apps/catalina-base-10.1-tmplt.tgz /opt/abinitio/penv/abinitio-app-hub/apps/catalina-base-10.1-tmplt
+tar -czf /opt/abinitio/penv/abinitio-app-hub/apps/catalina-home-10.1.tgz /opt/abinitio/penv/abinitio-app-hub/apps/catalina-home-10.1
 
-rm -rf /opt/abinitio/penv/abinitio-app/hub/apps/catalina-base-10.1
-rm -rf /opt/abinitio/penv/abinitio-app/hub/apps/catalina-base-10.1-tmplt
-rm -rf /opt/abinitio/penv/abinitio-app/hub/apps/catalina-home-10.1
+rm -rf /opt/abinitio/penv/abinitio-app-hub/apps/catalina-base-10.1
+rm -rf /opt/abinitio/penv/abinitio-app-hub/apps/catalina-base-10.1-tmplt
+rm -rf /opt/abinitio/penv/abinitio-app-hub/apps/catalina-home-10.1
+
+then ls -lrth /opt/abinitio/penv/abinitio-app-hub/apps/
 
 # 2. the requirement of the script is as below
 
