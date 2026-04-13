@@ -12,6 +12,7 @@ For denv:
 cd /FCR_APP/abinitio/tmp
 export BUILDHOST=<target_host>
 ai_build/scripts.v2/build-package.ksh -t ${BUILDHOST}.hk.hsbc -e denv -b <co_ops_version_number>
+check the size of ai_build_package_${BUILDHOST}_denv.tgz to ensure the file size is greater than 500MB, if it's not throw error
 
 <target_host> is one input parameter for the script, and <co_ops_version_number> is the version number of co-ops to be upgraded like 4-4-3-3,  which is also an input parameter for the script 4.4.3.3, if user input 4.4.3.3, it should become 4-4-3-3 in the command.
 
@@ -21,6 +22,7 @@ For benv:
 cd /opt/abinitio/tmp
 export BUILDHOST=<target_host>
 ai_build/scripts.v2/build-package.ksh -x ai_build/build/reference.v2/hostname-hdp11-new-server.xref -t ${BUILDHOST}.systems.uk.hsbc -e benv -b <co_ops_version_number>
+check the size of ai_build_package_${BUILDHOST}_benv.tgz to ensure the file size is greater than 1GB, if it's not throw error
 
 <target_host> is one input parameter for the script, and <co_ops_version_number> is the version number of co-ops to be upgraded like 4-4-3-3,  which is also an input parameter for the script 4.4.3.3, if user input 4.4.3.3, it should become 4-4-3-3 in the command.
 
@@ -30,6 +32,7 @@ For penv:
 cd /opt/abinitio/tmp
 export BUILDHOST=<target_host>
 ai_build/scripts.v2/build-package.ksh -x ai_build/build/reference.v2/hostname-hdp07-new-server.xref -t ${BUILDHOST}.systems.uk.hsbc -e penv -b <co_ops_version_number>
+check the size of ai_build_package_${BUILDHOST}_penv.tgz to ensure the file size is greater than 1GB, if it's not throw error
 
 <target_host> is one input parameter for the script, and <co_ops_version_number> is the version number of co-ops to be upgraded like 4-4-3-3,  which is also an input parameter for the script 4.4.3.3, if user input 4.4.3.3, it should become 4-4-3-3 in the command.
 
@@ -59,18 +62,22 @@ For denv:
 transfer the script from gbl25149108.hc.cloud.uk.hsbc to <target_host> with following command:
 
 scp -q /FCR_APP/abinitio/tmp/upgrade_co_ops_automation.sh fap41-abiadmin@${BUILDHOST}.hk.hsbc:/opt/abinitio/tmp/co_ops_4433, it may ask for password, please input the password to transfer the script
+copy configs/upgrade/co_ops_upgrade_denv.conf to target server {BUILDHOST} under path /opt/abinitio/tmp/co_ops_4433 it may ask for password, please input the password to transfer the script
 ssh -q fap41-abiadmin@<target_host>.hk.hsbc -C "ls -lrth /opt/abinitio/tmp/co_ops_4433 && chmod +x /opt/abinitio/tmp/co_ops_4433/upgrade_co_ops_automation.sh && ls -lrth /opt/abinitio/tmp/co_ops_4433", it may ask for password, please input the password to check the script
 
 For benv:
 transfer the script from gbl25183782.systems.uk.hsbc to <target_host> with following command:
 
 scp -q /opt/abinitio/tmp/upgrade_co_ops_automation.sh fap41-abiadmin@${BUILDHOST}.systems.uk.hsbc:/opt/abinitio/tmp/co_ops_4433, it may ask for password, please input the password to transfer the script
+copy configs/upgrade/co_ops_upgrade_denv.conf to target server {BUILDHOST} under path /opt/abinitio/tmp/co_ops_4433 it may ask for password, please input the password to transfer the script
 ssh -q fap41-abiadmin@<target_host>.hk.hsbc -C "ls -lrth /opt/abinitio/tmp/co_ops_4433 && chmod +x /opt/abinitio/tmp/co_ops_4433/upgrade_co_ops_automation.sh && ls -lrth /opt/abinitio/tmp/co_ops_4433", it may ask for password, please input the password to check the script
+
 
 For penv:
 transfer the script from gbl25185915.systems.uk.hsbc to <target_host> with following command:
 
 scp -q /opt/abinitio/tmp/upgrade_co_ops_automation.sh fap01-abiadmin@${BUILDHOST}.systems.uk.hsbc:/opt/abinitio/tmp/co_ops_4433, it may ask for password, please input the password to transfer the script
+copy configs/upgrade/co_ops_upgrade_denv.conf to target server {BUILDHOST} under path /opt/abinitio/tmp/co_ops_4433 it may ask for password, please input the password to transfer the script
 ssh -q fap01-abiadmin@<target_host>.hk.hsbc -C "ls -lrth /opt/abinitio/tmp/co_ops_4433 && chmod +x /opt/abinitio/tmp/co_ops_4433/upgrade_co_ops_automation.sh && ls -lrth /opt/abinitio/tmp/co_ops_4433", it may ask for password, please input the password to check the script
 
 # 2. the requirement of the script is as below

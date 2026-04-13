@@ -59,13 +59,17 @@ BUILD_REFERENCE_XREF=""
 REMOTE_USER=""
 REMOTE_PACKAGE_ROOT=""
 UPGRADE_SCRIPT_SOURCE=""
+UPGRADE_CONFIG_SOURCE=""
 SSH_AUTH_MODE="key"
 PACKAGE_ENV_LABEL=""
+PACKAGE_MIN_SIZE_MB=0
 SSH_DESTINATION=""
 REMOTE_VERSION_DIR=""
 PACKAGE_FILE=""
 PACKAGE_FILE_NAME=""
+UPGRADE_CONFIG_NAME=""
 BUILD_TARGET_FQDN=""
+PACKAGE_MIN_SIZE_BYTES=0
 
 EXECUTION_STEPS=()
 
@@ -102,11 +106,11 @@ Step list:
   step_1  Detect env from the current build host and validate the target host
   step_2  Validate local prerequisites and derive runtime paths
   step_3  Build the customized installation package
-  step_4  Verify the generated package exists
+  step_4  Verify the generated package exists and is large enough
   step_5  Create the remote version directory
   step_6  Transfer the package to the target host
   step_7  Unzip the package on the target host
-  step_8  Transfer upgrade_co_ops_automation.sh to the target host
+  step_8  Transfer upgrade_co_ops_automation.sh and config to the target host
   step_9  chmod the remote script and verify the remote directory
 
 Examples:
@@ -142,12 +146,12 @@ step_title() {
     1) printf '%s\n' "Validate requested env, build host, and target host" ;;
     2) printf '%s\n' "Validate local prerequisites" ;;
     3) printf '%s\n' "Build customized installation package" ;;
-    4) printf '%s\n' "Verify generated package" ;;
+    4) printf '%s\n' "Verify generated package and size" ;;
     5) printf '%s\n' "Create remote version directory" ;;
     6) printf '%s\n' "Transfer package to target host" ;;
     7) printf '%s\n' "Unzip package on target host" ;;
-    8) printf '%s\n' "Transfer upgrade script to target host" ;;
-    9) printf '%s\n' "chmod and verify remote script" ;;
+    8) printf '%s\n' "Transfer upgrade script and config to target host" ;;
+    9) printf '%s\n' "chmod and verify remote script and config" ;;
     *) printf '%s\n' "Unknown step" ;;
   esac
 }
@@ -388,7 +392,7 @@ on_error() {
 }
 
 ensure_required_commands() {
-  local commands=(bash date find hostname mkdir scp sed ssh tee)
+  local commands=(bash date find hostname mkdir scp sed ssh stat tee)
   local cmd=""
   for cmd in "${commands[@]}"; do
     command -v "${cmd}" >/dev/null 2>&1 || die "required command not found: ${cmd}"
@@ -560,7 +564,9 @@ load_config() {
   : "${REMOTE_USER:?REMOTE_USER must be set in ${CONFIG_FILE}}"
   : "${REMOTE_PACKAGE_ROOT:?REMOTE_PACKAGE_ROOT must be set in ${CONFIG_FILE}}"
   : "${UPGRADE_SCRIPT_SOURCE:?UPGRADE_SCRIPT_SOURCE must be set in ${CONFIG_FILE}}"
+  : "${UPGRADE_CONFIG_SOURCE:?UPGRADE_CONFIG_SOURCE must be set in ${CONFIG_FILE}}"
   : "${PACKAGE_ENV_LABEL:?PACKAGE_ENV_LABEL must be set in ${CONFIG_FILE}}"
+  : "${PACKAGE_MIN_SIZE_MB:?PACKAGE_MIN_SIZE_MB must be set in ${CONFIG_FILE}}"
   declare -p TARGET_HOST_ALLOWLIST >/dev/null 2>&1 || die "TARGET_HOST_ALLOWLIST must be defined in ${CONFIG_FILE}"
   [[ "${#TARGET_HOST_ALLOWLIST[@]}" -gt 0 ]] || die "TARGET_HOST_ALLOWLIST must not be empty in ${CONFIG_FILE}"
 
@@ -577,6 +583,8 @@ load_config() {
   BUILD_TARGET_FQDN="${TARGET_HOST_SHORT}${TARGET_HOST_SUFFIX}"
   PACKAGE_FILE="${BUILD_BASE_DIR}/ai_build/tmp/ai_build_package_${TARGET_HOST_SHORT}_${PACKAGE_ENV_LABEL}.tgz"
   PACKAGE_FILE_NAME="$(basename "${PACKAGE_FILE}")"
+  UPGRADE_CONFIG_NAME="$(basename "${UPGRADE_CONFIG_SOURCE}")"
+  PACKAGE_MIN_SIZE_BYTES=$((PACKAGE_MIN_SIZE_MB * 1024 * 1024))
 
   LOG_DIR="${LOG_DIR:-${REPO_ROOT}/logs}"
   STATE_DIR="${STATE_DIR:-${REPO_ROOT}/.state}"
@@ -670,6 +678,7 @@ log_runtime_context() {
   log INFO "co-ops version: ${CO_OPS_VERSION}"
   log INFO "co-ops build version: ${CO_OPS_VERSION_DASHED}"
   log INFO "remote version directory: ${REMOTE_VERSION_DIR}"
+  log INFO "minimum package size: ${PACKAGE_MIN_SIZE_MB} MB"
   log INFO "allowlist entries in ${ENV_NAME}: ${#TARGET_HOST_ALLOWLIST[@]}"
   if [[ "${SKIP_BUILD_HOST_VALIDATION}" -eq 1 ]]; then
     log WARN "dry-run mode skips current build host validation"
@@ -703,6 +712,7 @@ step_2_validate_local_prerequisites() {
     run_logged_cmd test -f "${BUILD_BASE_DIR}/${BUILD_REFERENCE_XREF}"
   fi
   run_logged_cmd test -f "${UPGRADE_SCRIPT_SOURCE}"
+  run_logged_cmd test -f "${UPGRADE_CONFIG_SOURCE}"
 }
 
 # Build the package exactly in the runbook style so operators can compare the
@@ -736,7 +746,13 @@ step_3_build_package() {
 }
 
 step_4_verify_package() {
+  local shell_cmd=""
+
   run_logged_cmd test -f "${PACKAGE_FILE}"
+  printf -v shell_cmd 'package_size=$(stat -c %%s %q) && test "${package_size}" -gt %q' \
+    "${PACKAGE_FILE}" \
+    "${PACKAGE_MIN_SIZE_BYTES}"
+  run_shell_cmd "${shell_cmd}"
 }
 
 # The version directory keeps repeated runs scoped to one co-ops version and
@@ -756,13 +772,16 @@ step_7_unzip_package() {
   run_ssh_remote_cmd "${SSH_DESTINATION}" "${remote_cmd}"
 }
 
-step_8_transfer_upgrade_script() {
+step_8_transfer_upgrade_assets() {
   run_logged_cmd scp -q "${UPGRADE_SCRIPT_SOURCE}" "${SSH_DESTINATION}:${REMOTE_VERSION_DIR}/"
+  run_logged_cmd scp -q "${UPGRADE_CONFIG_SOURCE}" "${SSH_DESTINATION}:${REMOTE_VERSION_DIR}/"
 }
 
 step_9_chmod_and_verify() {
   local remote_cmd=""
-  printf -v remote_cmd 'ls -lrth %q && chmod +x %q && ls -lrth %q' \
+  printf -v remote_cmd 'test -f %q && test -f %q && ls -lrth %q && chmod +x %q && ls -lrth %q' \
+    "${REMOTE_VERSION_DIR}/upgrade_co_ops_automation.sh" \
+    "${REMOTE_VERSION_DIR}/${UPGRADE_CONFIG_NAME}" \
     "${REMOTE_VERSION_DIR}" \
     "${REMOTE_VERSION_DIR}/upgrade_co_ops_automation.sh" \
     "${REMOTE_VERSION_DIR}"
@@ -778,7 +797,7 @@ run_step() {
     5) step_5_create_remote_dir ;;
     6) step_6_transfer_package ;;
     7) step_7_unzip_package ;;
-    8) step_8_transfer_upgrade_script ;;
+    8) step_8_transfer_upgrade_assets ;;
     9) step_9_chmod_and_verify ;;
     *) die "unknown step: $1" ;;
   esac
