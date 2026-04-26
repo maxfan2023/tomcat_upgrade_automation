@@ -42,6 +42,7 @@ The JDK workflow upgrades the Ab Initio Java runtime symlinks on the current app
 ./scripts/jdk/upgrade_jdk.sh --env prod --from-step step_8
 ./scripts/jdk/upgrade_jdk.sh --env prod-cont --jdk-archive zulu11.88.18-sa-jdk11.0.31-linux_x64.tar.gz --jdk-dir zulu11.88.18-sa-jdk11.0.31-linux_x64
 ./scripts/jdk/upgrade_jdk.sh --env dev --config /path/to/jdk_upgrade_dev.conf --dry-run
+./scripts/jdk/upgrade_jdk.sh --env prod --from-step step_7 --old-jdk-basename zulu11.86.20-sa-jdk11.0.30-linux_x64
 ```
 
 ### Safe Defaults
@@ -49,6 +50,7 @@ The JDK workflow upgrades the Ab Initio Java runtime symlinks on the current app
 `--java-version` is the semantic Java version, such as `11.0.31`; the installer archive is configured separately with `DEFAULT_JDK_ARCHIVE` or overridden with `--jdk-archive`.
 The script runs `step_1` through `step_9` by default and supports `--from-step step_N` for restart.
 Before updating symlinks, it records the current `jdk11` symlink target and only archives that old directory after the target version is verified.
+`--old-jdk-basename` is an operator override for abnormal resume or manual-repair cases; it must be a basename only and cannot equal the target JDK directory.
 It refuses to archive or delete the target JDK directory as the old JDK.
 `DELETE_OLD_JDK_AFTER_ARCHIVE` controls whether the old directory is removed after its `.tar.gz` archive is created.
 `prod-cont` skips application service stop/start by default because its config has empty service command arrays.

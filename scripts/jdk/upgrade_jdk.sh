@@ -25,6 +25,7 @@ CONFIG_FILE=""
 CLI_JAVA_VERSION=""
 CLI_JDK_ARCHIVE=""
 CLI_JDK_DIR=""
+CLI_OLD_JDK_BASENAME=""
 FROM_STEP_RAW="1"
 START_STEP=1
 DRY_RUN=0
@@ -69,6 +70,10 @@ Options:
                             zulu11.88.18-sa-jdk11.0.31-linux_x64.tar.gz
       --jdk-dir DIR         Extracted target JDK directory name, for example
                             zulu11.88.18-sa-jdk11.0.31-linux_x64
+      --old-jdk-basename DIR_NAME
+                            Override the old JDK directory basename to archive.
+                            Default is auto-detected from the pre-upgrade jdk11
+                            symlink target.
   -s, --from-step STEP      Start from a step number or label, for example 5
                             or step_5
       --dry-run             Print commands only, do not execute commands
@@ -84,6 +89,8 @@ Examples:
   ./scripts/jdk/upgrade_jdk.sh --env prod-cont \
     --jdk-archive zulu11.88.18-sa-jdk11.0.31-linux_x64.tar.gz \
     --jdk-dir zulu11.88.18-sa-jdk11.0.31-linux_x64
+  ./scripts/jdk/upgrade_jdk.sh --env prod --from-step step_7 \
+    --old-jdk-basename zulu11.86.20-sa-jdk11.0.30-linux_x64
 EOF
 }
 
@@ -206,9 +213,28 @@ log_step() {
   log STEP "$*"
 }
 
+single_quote_for_display() {
+  local remaining="$1"
+  local sq="'"
+
+  printf "'"
+  while [[ "${remaining}" == *"${sq}"* ]]; do
+    printf '%s' "${remaining%%"${sq}"*}"
+    printf "'\\''"
+    remaining="${remaining#*"${sq}"}"
+  done
+  printf '%s' "${remaining}"
+  printf "'"
+}
+
 format_display_arg() {
   local arg="$1"
-  printf '%q' "${arg}"
+
+  if [[ -n "${arg}" && "${arg}" =~ ^[A-Za-z0-9_./:@%+=,-]+$ ]]; then
+    printf '%s' "${arg}"
+  else
+    single_quote_for_display "${arg}"
+  fi
 }
 
 display_cmd() {
@@ -222,7 +248,7 @@ display_cmd() {
 
 display_shell_cmd() {
   local shell_cmd="$1"
-  printf 'bash -lc %q' "${shell_cmd}"
+  printf 'bash -lc %s' "$(single_quote_for_display "${shell_cmd}")"
 }
 
 run_logged_cmd() {
@@ -331,6 +357,11 @@ parse_args() {
         CLI_JDK_DIR="$2"
         shift 2
         ;;
+      --old-jdk-basename)
+        [[ "$#" -ge 2 ]] || die "--old-jdk-basename requires a value"
+        CLI_OLD_JDK_BASENAME="$2"
+        shift 2
+        ;;
       -s|--from-step)
         [[ "$#" -ge 2 ]] || die "--from-step requires a value"
         FROM_STEP_RAW="$2"
@@ -415,6 +446,9 @@ load_config() {
   [[ -n "${JDK_ARCHIVE}" ]] || die "Target JDK archive name is empty"
   [[ -n "${JDK_DIR}" ]] || die "Target JDK directory name is empty"
   [[ "${JAVA_VERSION}" =~ ^[0-9]+(\.[0-9]+)+$ ]] || die "--java-version must be a semantic Java version like 11.0.31"
+  if [[ -n "${CLI_OLD_JDK_BASENAME}" ]]; then
+    ensure_target_is_not_old_delete_target "${CLI_OLD_JDK_BASENAME}"
+  fi
 
   JDK_ARCHIVE_PATH="${JDK_SOFTWARE_DIR}/${JDK_ARCHIVE}"
   TARGET_JDK_PATH="${JAVA_BASE_DIR}/${JDK_DIR}"
@@ -532,11 +566,20 @@ resolve_link_target_path() {
 
 read_saved_old_jdk_basename() {
   OLD_JDK_BASENAME=""
+  if [[ -n "${CLI_OLD_JDK_BASENAME}" ]]; then
+    OLD_JDK_BASENAME="${CLI_OLD_JDK_BASENAME}"
+    ensure_target_is_not_old_delete_target "${OLD_JDK_BASENAME}"
+    return 0
+  fi
+
   if [[ -f "${OLD_JDK_STATE_FILE}" ]]; then
     # shellcheck source=/dev/null
     source "${OLD_JDK_STATE_FILE}"
   fi
   OLD_JDK_BASENAME="${OLD_JDK_BASENAME:-}"
+  if [[ -n "${OLD_JDK_BASENAME}" ]]; then
+    ensure_target_is_not_old_delete_target "${OLD_JDK_BASENAME}"
+  fi
 }
 
 save_old_jdk_basename() {
@@ -555,9 +598,10 @@ record_old_jdk_target_if_needed() {
   local old_target_path=""
   local old_basename=""
 
-  read_saved_old_jdk_basename
-  if [[ -n "${OLD_JDK_BASENAME}" ]]; then
-    log_info "Using saved old JDK directory from state: ${OLD_JDK_BASENAME}"
+  if [[ -n "${CLI_OLD_JDK_BASENAME}" ]]; then
+    ensure_target_is_not_old_delete_target "${CLI_OLD_JDK_BASENAME}"
+    save_old_jdk_basename "${CLI_OLD_JDK_BASENAME}"
+    log_info "Using operator-provided old JDK directory: ${CLI_OLD_JDK_BASENAME}"
     return 0
   fi
 
