@@ -4,6 +4,7 @@ This repository is an Ab Initio operations automation workspace.
 It stores multiple independent automation scripts (not just one Tomcat workflow), and each script has its own purpose, config, and runbook.
 
 Current scripts are **on the same level**:
+- JDK upgrade automation: `scripts/jdk/upgrade_jdk.sh`
 - Tomcat upgrade automation: `scripts/tomcat/tomcat_upgrade.sh`
 - Co-ops package build & transfer: `scripts/co_ops/package/generate_co_ops_installation_package.sh`
 - Co-ops target-host upgrade: `scripts/co_ops/upgrade/upgrade_co_ops_automation.sh`
@@ -12,9 +13,11 @@ Future scripts for other Ab Initio operational tasks can be added under `scripts
 
 ## Files
 
+- `scripts/jdk/upgrade_jdk.sh`: main JDK upgrade automation entrypoint
 - `scripts/tomcat/tomcat_upgrade.sh`: main Tomcat automation entrypoint
 - `scripts/co_ops/package/generate_co_ops_installation_package.sh`: build and transfer a customized co-ops package for one target host
 - `scripts/co_ops/upgrade/upgrade_co_ops_automation.sh`: run the co-ops upgrade workflow on the target host
+- `configs/jdk/jdk_upgrade_<env>.conf`: env-specific settings for the JDK workflow
 - `configs/tomcat/default.conf`: public-safe sample configuration for the Tomcat workflow
 - `configs/co_ops/package/co_ops_<env>.conf`: env-specific settings for the co-ops package workflow
 - `configs/co_ops/upgrade/co_ops_upgrade_<env>.conf`: env-specific settings for the co-ops upgrade workflow
@@ -24,6 +27,33 @@ Future scripts for other Ab Initio operational tasks can be added under `scripts
 The repository keeps a canonical copy of each script and config file under `scripts/`, `configs/`, and `docs/`.  
 Root-level shortcut files are intentionally removed, so always use the canonical paths above.  
 When new automation modules are added, place them in the matching subfolder under `scripts/`, `configs/`, and `docs/`, and document them in this README.
+
+## JDK Upgrade
+
+The JDK workflow upgrades the Ab Initio Java runtime symlinks on the current application host, verifies the active Java version, archives the old JDK directory, and runs the configured PostgreSQL DB-server JDK update commands.
+
+### Usage
+
+```bash
+./scripts/jdk/upgrade_jdk.sh --help
+./scripts/jdk/upgrade_jdk.sh --list-steps
+./scripts/jdk/upgrade_jdk.sh --env dev --dry-run
+./scripts/jdk/upgrade_jdk.sh --env uat --java-version 11.0.31 --auto-continue
+./scripts/jdk/upgrade_jdk.sh --env prod --from-step step_8
+./scripts/jdk/upgrade_jdk.sh --env prod-cont --jdk-archive zulu11.88.18-sa-jdk11.0.31-linux_x64.tar.gz --jdk-dir zulu11.88.18-sa-jdk11.0.31-linux_x64
+./scripts/jdk/upgrade_jdk.sh --env dev --config /path/to/jdk_upgrade_dev.conf --dry-run
+```
+
+### Safe Defaults
+
+`--java-version` is the semantic Java version, such as `11.0.31`; the installer archive is configured separately with `DEFAULT_JDK_ARCHIVE` or overridden with `--jdk-archive`.
+The script runs `step_1` through `step_9` by default and supports `--from-step step_N` for restart.
+Before updating symlinks, it records the current `jdk11` symlink target and only archives that old directory after the target version is verified.
+It refuses to archive or delete the target JDK directory as the old JDK.
+`DELETE_OLD_JDK_AFTER_ARCHIVE` controls whether the old directory is removed after its `.tar.gz` archive is created.
+`prod-cont` skips application service stop/start by default because its config has empty service command arrays.
+DB host updates are executed serially over SSH and stop at the first failure.
+Logs are written under `logs/`, error logs use the same name with `.err`, and files older than 90 days are removed automatically.
 
 ## Tomcat Upgrade
 
