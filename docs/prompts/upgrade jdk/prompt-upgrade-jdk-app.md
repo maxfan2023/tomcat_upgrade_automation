@@ -259,6 +259,8 @@ if the java version does not match the expected version 11.0.31, then prompt use
 
 ### Step 7: update the JDK used on PostgreSQL database server
 
+The remote PostgreSQL script uses its own internal step labels, pg_step_1 through pg_step_4. These labels are separate from the application server script's outer step_N labels.
+
 for dev env :
 
 first , copy the new JDK folder from application server to database server by running following command

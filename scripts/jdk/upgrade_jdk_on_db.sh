@@ -61,8 +61,8 @@ Options:
                             Override the old JDK directory basename to archive.
                             Default is auto-detected from the pre-upgrade
                             jdk-11 symlink target.
-  -s, --from-step STEP      Start from a step number or label, for example 3
-                            or step_3
+  -s, --from-step STEP      Start from a PG step number or label, for example
+                            pg_step_3, step_3, or 3
       --dry-run             Print commands only, do not execute commands
       --debug               Enable shell tracing after logging starts
       --auto-continue       Do not pause between steps
@@ -72,7 +72,7 @@ Options:
 Examples:
   ./scripts/jdk/upgrade_jdk_on_db.sh --env dev --dry-run
   ./scripts/jdk/upgrade_jdk_on_db.sh --env uat --java-version 11.0.31 --auto-continue
-  ./scripts/jdk/upgrade_jdk_on_db.sh --env prod --from-step step_3
+  ./scripts/jdk/upgrade_jdk_on_db.sh --env prod --from-step pg_step_3
   ./scripts/jdk/upgrade_jdk_on_db.sh --env prod-cont \
     --jdk-dir zulu11.88.18-sa-jdk11.0.31-linux_x64
 EOF
@@ -80,15 +80,16 @@ EOF
 
 print_steps() {
   cat <<'EOF'
-step_1  Verify the target JDK directory exists on the PostgreSQL host
-step_2  Record old jdk-11 target and update JDK symlink
-step_3  Archive the old JDK directory and optionally delete it
-step_4  Verify the active java version after symlink update
+pg_step_1  Verify the target JDK directory exists on the PostgreSQL host
+pg_step_2  Record old jdk-11 target and update JDK symlink
+pg_step_3  Archive the old JDK directory and optionally delete it
+pg_step_4  Verify the active java version after symlink update
 EOF
 }
 
 normalize_step() {
   local raw="${1:-}"
+  raw="${raw#pg_step_}"
   raw="${raw#step_}"
   if [[ ! "${raw}" =~ ^[0-9]+$ ]]; then
     printf '%s\n' ""
@@ -98,7 +99,7 @@ normalize_step() {
 }
 
 step_label_for_number() {
-  printf 'step_%s\n' "$1"
+  printf 'pg_step_%s\n' "$1"
 }
 
 step_title() {
@@ -452,7 +453,7 @@ compute_execution_steps() {
   local step=""
 
   START_STEP="$(normalize_step "${FROM_STEP_RAW}")" || die "Invalid --from-step value: ${FROM_STEP_RAW}"
-  [[ "${START_STEP}" -ge 1 && "${START_STEP}" -le 4 ]] || die "--from-step must be between step_1 and step_4"
+  [[ "${START_STEP}" -ge 1 && "${START_STEP}" -le 4 ]] || die "--from-step must be between pg_step_1 and pg_step_4"
 
   EXECUTION_STEPS=()
   for step in "${DEFAULT_STEPS[@]}"; do
@@ -559,7 +560,7 @@ record_old_jdk_target_if_needed() {
 }
 
 step_1_verify_target_jdk() {
-  log_step "step_1 Verify target JDK directory"
+  log_step "pg_step_1 Verify target JDK directory"
   run_logged_cmd test -d "${TARGET_JDK_PATH}"
   run_logged_cmd ls -lrth "${JAVA_BASE_DIR}"
 }
@@ -568,7 +569,7 @@ step_2_update_symlinks() {
   local link_name=""
   local link_path=""
 
-  log_step "step_2 Record old JDK and update symlink"
+  log_step "pg_step_2 Record old JDK and update symlink"
   record_old_jdk_target_if_needed
 
   run_logged_cmd test -d "${TARGET_JDK_PATH}"
@@ -587,7 +588,7 @@ step_3_archive_old_jdk() {
   local old_path=""
   local archive_file=""
 
-  log_step "step_3 Archive old JDK"
+  log_step "pg_step_3 Archive old JDK"
   read_saved_old_jdk_basename
 
   if [[ -z "${OLD_JDK_BASENAME}" ]]; then
@@ -623,7 +624,7 @@ step_3_archive_old_jdk() {
 }
 
 step_4_verify_target_java() {
-  log_step "step_4 Verify target Java version"
+  log_step "pg_step_4 Verify target Java version"
 
   if [[ "${DRY_RUN}" -eq 1 ]]; then
     capture_java_version
