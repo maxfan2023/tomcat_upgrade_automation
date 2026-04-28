@@ -25,6 +25,20 @@ assert_contains() {
   [[ "${haystack}" == *"${needle}"* ]] || fail "expected output to contain: ${needle}"
 }
 
+assert_not_contains() {
+  local haystack="$1"
+  local needle="$2"
+
+  [[ "${haystack}" != *"${needle}"* ]] || fail "expected output not to contain: ${needle}"
+}
+
+assert_no_line_starts_with() {
+  local haystack="$1"
+  local prefix="$2"
+
+  [[ "${haystack}" != "${prefix}"* && "${haystack}" != *$'\n'"${prefix}"* ]] || fail "expected no output line to start with: ${prefix}"
+}
+
 assert_symlink_target() {
   local link_path="$1"
   local expected="$2"
@@ -68,7 +82,50 @@ test_list_steps() {
   local output=""
 
   output="$("${SCRIPT}" --list-steps)"
-  [[ "${output}" == *"step_4"* ]] || fail "--list-steps should include step_4"
+  assert_contains "${output}" "pg_step_4  Verify the active java version after symlink update"
+  assert_no_line_starts_with "${output}" "step_"
+}
+
+test_from_step_accepts_pg_namespace_and_skips_earlier_steps() {
+  local temp_root=""
+  local config_file=""
+  local output=""
+
+  temp_root="$(mktemp -d)"
+  trap "rm -rf '${temp_root}'" RETURN
+  config_file="${temp_root}/jdk_pg_upgrade_dev.conf"
+
+  mkdir -p "${temp_root}/java"
+  make_config "${config_file}" "${temp_root}" "yes"
+
+  output="$("${SCRIPT}" --env dev --config "${config_file}" --from-step pg_step_3 --auto-continue --dry-run 2>&1)"
+
+  assert_contains "${output}" "from-step: pg_step_3"
+  assert_contains "${output}" "pg_step_3 Archive old JDK"
+  assert_contains "${output}" "pg_step_4 Verify target Java version"
+  assert_not_contains "${output}" "step_1 Verify target JDK directory"
+  assert_not_contains "${output}" "step_2 Record old JDK and update symlink"
+}
+
+test_from_step_keeps_legacy_step_inputs_compatible() {
+  local temp_root=""
+  local config_file=""
+  local output=""
+
+  temp_root="$(mktemp -d)"
+  trap "rm -rf '${temp_root}'" RETURN
+  config_file="${temp_root}/jdk_pg_upgrade_dev.conf"
+
+  mkdir -p "${temp_root}/java"
+  make_config "${config_file}" "${temp_root}" "yes"
+
+  output="$("${SCRIPT}" --env dev --config "${config_file}" --from-step step_3 --auto-continue --dry-run 2>&1)"
+  assert_contains "${output}" "from-step: pg_step_3"
+  assert_contains "${output}" "pg_step_3 Archive old JDK"
+
+  output="$("${SCRIPT}" --env dev --config "${config_file}" --from-step 3 --auto-continue --dry-run 2>&1)"
+  assert_contains "${output}" "from-step: pg_step_3"
+  assert_contains "${output}" "pg_step_3 Archive old JDK"
 }
 
 test_upgrade_archives_and_deletes_old_jdk() {
@@ -192,6 +249,8 @@ test_version_verification_failure_stops_workflow() {
 
 main() {
   test_list_steps
+  test_from_step_accepts_pg_namespace_and_skips_earlier_steps
+  test_from_step_keeps_legacy_step_inputs_compatible
   test_upgrade_archives_and_deletes_old_jdk
   test_already_target_is_idempotent
   test_dry_run_displays_readable_commands

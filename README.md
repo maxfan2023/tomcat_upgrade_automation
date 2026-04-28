@@ -47,12 +47,14 @@ The JDK workflow upgrades the Ab Initio Java runtime symlinks on the current app
 ./scripts/jdk/upgrade_jdk.sh --env dev --config /path/to/jdk_upgrade_dev.conf --dry-run
 ./scripts/jdk/upgrade_jdk.sh --env prod --from-step step_7 --old-jdk-basename zulu11.86.20-sa-jdk11.0.30-linux_x64
 ./scripts/jdk/upgrade_jdk_on_db.sh --env dev --config configs/jdk/jdk_pg_upgrade_dev.conf --dry-run
+./scripts/jdk/upgrade_jdk_on_db.sh --env dev --config configs/jdk/jdk_pg_upgrade_dev.conf --from-step pg_step_3 --dry-run
 ```
 
 ### Safe Defaults
 
 `--java-version` is the semantic Java version, such as `11.0.31`; the installer archive is configured separately with `DEFAULT_JDK_ARCHIVE` or overridden with `--jdk-archive`.
 The script runs `step_1` through `step_9` by default and supports `--from-step step_N` for restart.
+The PostgreSQL-side script uses `pg_step_1` through `pg_step_4` for its internal labels, so those logs do not overlap with the application workflow's outer `step_N` labels; its `--from-step` prefers `pg_step_N` and still accepts legacy `step_N` or plain numbers.
 Before updating symlinks, it records the current `jdk11` symlink target and only archives that old directory after the target version is verified.
 `--old-jdk-basename` is an operator override for abnormal resume or manual-repair cases; it must be a basename only and cannot equal the target JDK directory.
 It refuses to archive or delete the target JDK directory as the old JDK.
