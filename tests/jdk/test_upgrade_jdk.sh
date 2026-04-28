@@ -70,6 +70,7 @@ JDK_SYMLINKS=(jdk11 jdk1.8.0_191)
 STOP_COMMANDS=()
 START_COMMANDS=()
 DB_UPDATE_HOSTS=()
+DB_JDK_COPY_HOSTS=()
 DB_UPDATE_COMMAND="/bin/bash /opt/clouseau/upgrade_jdk_on_db.sh"
 DELETE_OLD_JDK_AFTER_ARCHIVE="${delete_old}"
 LOG_DIR="${temp_root}/logs"
@@ -97,6 +98,7 @@ START_COMMANDS=(
   "cd /FCR_APP/abinitio/tmp && /FCR_APP/abinitio/management/scripts/ienv.abinitio.runner.sh start all-services"
 )
 DB_UPDATE_HOSTS=(gbl25152435.hc.cloud.uk.hsbc)
+DB_JDK_COPY_HOSTS=(gbl25152435.hc.cloud.uk.hsbc)
 DB_UPDATE_COMMAND="/bin/bash /opt/clouseau/upgrade_jdk_on_db.sh"
 DELETE_OLD_JDK_AFTER_ARCHIVE="yes"
 LOG_DIR="${temp_root}/logs"
@@ -204,7 +206,11 @@ test_dry_run_displays_readable_commands() {
   output="$("${SCRIPT}" --env dev --config "${config_file}" --from-step step_3 --auto-continue --dry-run 2>&1)"
 
   assert_contains "${output}" "bash -lc 'cd /FCR_APP/abinitio/tmp && /FCR_APP/abinitio/management/scripts/ienv.abinitio.runner.sh stop all-services'"
-  assert_contains "${output}" "ssh -q gbl25152435.hc.cloud.uk.hsbc -C '/bin/bash /opt/clouseau/upgrade_jdk_on_db.sh'"
+  assert_contains "${output}" "scp -qr ${temp_root}/java/jdk11/zulu11.88.18-sa-jdk11.0.31-linux_x64 gbl25152435.hc.cloud.uk.hsbc:/opt/clouseau/java/"
+  assert_contains "${output}" "scp -q ${ROOT_DIR}/scripts/jdk/upgrade_jdk_on_db.sh gbl25152435.hc.cloud.uk.hsbc:/opt/clouseau/upgrade_jdk_on_db.sh"
+  assert_contains "${output}" "scp -q ${ROOT_DIR}/configs/jdk/jdk_pg_upgrade_dev.conf gbl25152435.hc.cloud.uk.hsbc:/opt/clouseau/jdk_pg_upgrade_dev.conf"
+  assert_contains "${output}" "ssh -q gbl25152435.hc.cloud.uk.hsbc -C 'chmod +x /opt/clouseau/upgrade_jdk_on_db.sh'"
+  assert_contains "${output}" "ssh -q gbl25152435.hc.cloud.uk.hsbc -C '/bin/bash /opt/clouseau/upgrade_jdk_on_db.sh --env dev --config /opt/clouseau/jdk_pg_upgrade_dev.conf --java-version 11.0.31 --jdk-dir zulu11.88.18-sa-jdk11.0.31-linux_x64 --auto-continue'"
   assert_contains "${output}" "bash -lc 'cd /FCR_APP/abinitio/tmp && /FCR_APP/abinitio/management/scripts/ienv.abinitio.runner.sh start all-services'"
   assert_not_contains "${output}" '\ \&\&'
   assert_not_contains "${output}" '/bin/bash\ /opt'
