@@ -8,6 +8,7 @@ This repository stores a single canonical copy of each workflow asset under grou
 scripts/
   jdk/
     upgrade_jdk.sh
+    upgrade_jdk_on_db.sh
   tomcat/
     tomcat_upgrade.sh
   co_ops/
@@ -19,6 +20,7 @@ scripts/
 configs/
   jdk/
     jdk_upgrade_<env>.conf
+    jdk_pg_upgrade_<env>.conf
   tomcat/
     default.conf
   co_ops/
