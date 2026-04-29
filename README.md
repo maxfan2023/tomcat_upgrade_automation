@@ -50,6 +50,13 @@ The JDK workflow upgrades the Ab Initio Java runtime symlinks on the current app
 ./scripts/jdk/upgrade_jdk_on_db.sh --env dev --config configs/jdk/jdk_pg_upgrade_dev.conf --from-step pg_step_3 --dry-run
 ```
 
+### Flowcharts
+
+The JDK workflow diagrams are available in native draw.io format with SVG and PNG exports:
+
+- Chinese: `docs/flowcharts/jdk/upgrade-jdk-flow-zh.drawio`, `docs/flowcharts/jdk/upgrade-jdk-flow-zh.drawio.svg`, `docs/flowcharts/jdk/upgrade-jdk-flow-zh.drawio.png`
+- English: `docs/flowcharts/jdk/upgrade-jdk-flow-en.drawio`, `docs/flowcharts/jdk/upgrade-jdk-flow-en.drawio.svg`, `docs/flowcharts/jdk/upgrade-jdk-flow-en.drawio.png`
+
 ### Safe Defaults
 
 `--java-version` is the semantic Java version, such as `11.0.31`; the installer archive is configured separately with `DEFAULT_JDK_ARCHIVE` or overridden with `--jdk-archive`.
