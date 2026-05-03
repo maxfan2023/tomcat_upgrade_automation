@@ -67,6 +67,33 @@ DEFAULT_JDK_ARCHIVE="zulu11.88.18-sa-jdk11.0.31-linux_x64.tar.gz"
 DEFAULT_JDK_DIR="zulu11.88.18-sa-jdk11.0.31-linux_x64"
 TARGET_JDK_CHMOD_MODE="0755"
 JDK_SYMLINKS=(jdk11 jdk1.8.0_191)
+PRIMARY_JDK_SYMLINK="jdk11"
+STOP_COMMANDS=()
+START_COMMANDS=()
+DB_UPDATE_HOSTS=()
+DB_JDK_COPY_HOSTS=()
+DB_UPDATE_COMMAND="/bin/bash /opt/clouseau/upgrade_jdk_on_db.sh"
+DELETE_OLD_JDK_AFTER_ARCHIVE="${delete_old}"
+LOG_DIR="${temp_root}/logs"
+STATE_DIR="${temp_root}/state"
+LOG_RETENTION_DAYS=90
+EOF
+}
+
+make_prod_config() {
+  local config_file="$1"
+  local temp_root="$2"
+  local delete_old="$3"
+
+  cat > "${config_file}" <<EOF
+JAVA_BASE_DIR="${temp_root}/java"
+JDK_SOFTWARE_DIR="${temp_root}/software"
+DEFAULT_JAVA_VERSION="11.0.31"
+DEFAULT_JDK_ARCHIVE="zulu11.88.18-sa-jdk11.0.31-linux_x64.tar.gz"
+DEFAULT_JDK_DIR="zulu11.88.18-sa-jdk11.0.31-linux_x64"
+TARGET_JDK_CHMOD_MODE="0755"
+JDK_SYMLINKS=(jdk-11.0.11 jdk1.8.0_191)
+PRIMARY_JDK_SYMLINK="jdk-11.0.11"
 STOP_COMMANDS=()
 START_COMMANDS=()
 DB_UPDATE_HOSTS=()
@@ -91,6 +118,7 @@ DEFAULT_JDK_ARCHIVE="zulu11.88.18-sa-jdk11.0.31-linux_x64.tar.gz"
 DEFAULT_JDK_DIR="zulu11.88.18-sa-jdk11.0.31-linux_x64"
 TARGET_JDK_CHMOD_MODE="0755"
 JDK_SYMLINKS=(jdk11 jdk1.8.0_191)
+PRIMARY_JDK_SYMLINK="jdk11"
 STOP_COMMANDS=(
   "cd /FCR_APP/abinitio/tmp && /FCR_APP/abinitio/management/scripts/ienv.abinitio.runner.sh stop all-services"
 )
@@ -187,6 +215,48 @@ test_already_up_to_date_exits_without_archive() {
   "${SCRIPT}" --env dev --config "${config_file}" --auto-continue
 
   assert_not_exists "${temp_root}/java/zulu11.88.18-sa-jdk11.0.31-linux_x64_$(date +%Y%m%d).tar.gz"
+}
+
+test_prod_uses_jdk_11_0_11_primary_symlink() {
+  local temp_root=""
+  local config_file=""
+
+  temp_root="$(mktemp -d)"
+  trap "rm -rf '${temp_root}'" RETURN
+  config_file="${temp_root}/jdk_upgrade_prod.conf"
+
+  mkdir -p "${temp_root}/java"
+  make_fake_java "${temp_root}/java/zulu11.86.20-sa-jdk11.0.30-linux_x64" "11.0.30"
+  ln -s zulu11.86.20-sa-jdk11.0.30-linux_x64 "${temp_root}/java/jdk-11.0.11"
+  ln -s zulu11.86.20-sa-jdk11.0.30-linux_x64 "${temp_root}/java/jdk1.8.0_191"
+  make_target_archive "${temp_root}"
+  make_prod_config "${config_file}" "${temp_root}" "yes"
+
+  "${SCRIPT}" --env prod --config "${config_file}" --auto-continue
+
+  assert_symlink_target "${temp_root}/java/jdk-11.0.11" "zulu11.88.18-sa-jdk11.0.31-linux_x64"
+  assert_symlink_target "${temp_root}/java/jdk1.8.0_191" "zulu11.88.18-sa-jdk11.0.31-linux_x64"
+  assert_not_exists "${temp_root}/java/jdk11"
+  assert_exists "${temp_root}/java/zulu11.86.20-sa-jdk11.0.30-linux_x64_$(date +%Y%m%d).tar.gz"
+  assert_not_exists "${temp_root}/java/zulu11.86.20-sa-jdk11.0.30-linux_x64"
+}
+
+test_prod_dry_run_checks_primary_symlink_java() {
+  local temp_root=""
+  local config_file=""
+  local output=""
+
+  temp_root="$(mktemp -d)"
+  trap "rm -rf '${temp_root}'" RETURN
+  config_file="${temp_root}/jdk_upgrade_prod.conf"
+
+  mkdir -p "${temp_root}/java" "${temp_root}/software"
+  make_prod_config "${config_file}" "${temp_root}" "yes"
+
+  output="$("${SCRIPT}" --env prod --config "${config_file}" --from-step step_2 --auto-continue --dry-run 2>&1)"
+
+  assert_contains "${output}" "${temp_root}/java/jdk-11.0.11/bin/java --version"
+  assert_not_contains "${output}" "${temp_root}/java/jdk11/bin/java --version"
 }
 
 test_dry_run_displays_readable_commands() {
@@ -312,6 +382,8 @@ main() {
   test_upgrade_archives_and_deletes_old_jdk
   test_upgrade_keeps_old_jdk_when_configured
   test_already_up_to_date_exits_without_archive
+  test_prod_uses_jdk_11_0_11_primary_symlink
+  test_prod_dry_run_checks_primary_symlink_java
   test_dry_run_displays_readable_commands
   test_old_jdk_basename_override_archives_requested_directory
   test_fresh_run_overwrites_stale_old_jdk_state

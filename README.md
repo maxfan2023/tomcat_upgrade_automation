@@ -62,7 +62,7 @@ The JDK workflow diagrams are available in native draw.io format with SVG and PN
 `--java-version` is the semantic Java version, such as `11.0.31`; the installer archive is configured separately with `DEFAULT_JDK_ARCHIVE` or overridden with `--jdk-archive`.
 The script runs `step_1` through `step_9` by default and supports `--from-step step_N` for restart.
 The PostgreSQL-side script uses `pg_step_1` through `pg_step_4` for its internal labels, so those logs do not overlap with the application workflow's outer `step_N` labels; its `--from-step` prefers `pg_step_N` and still accepts legacy `step_N` or plain numbers.
-Before updating symlinks, it records the current `jdk11` symlink target and only archives that old directory after the target version is verified.
+Before updating symlinks, it records the current primary JDK symlink target and only archives that old directory after the target version is verified. The primary symlink is `jdk11` for `dev`/`uat` and `jdk-11.0.11` for `prod`/`prod-cont`.
 `--old-jdk-basename` is an operator override for abnormal resume or manual-repair cases; it must be a basename only and cannot equal the target JDK directory.
 It refuses to archive or delete the target JDK directory as the old JDK.
 `DELETE_OLD_JDK_AFTER_ARCHIVE` controls whether the old directory is removed after its `.tar.gz` archive is created.

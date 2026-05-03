@@ -41,6 +41,7 @@ LOCK_DIR=""
 JAVA_VERSION=""
 JDK_ARCHIVE=""
 JDK_DIR=""
+PRIMARY_JDK_SYMLINK=""
 JDK_ARCHIVE_PATH=""
 TARGET_JDK_PATH=""
 DB_JDK_COPY_SOURCE_PATH=""
@@ -79,8 +80,8 @@ Options:
                             zulu11.88.18-sa-jdk11.0.31-linux_x64
       --old-jdk-basename DIR_NAME
                             Override the old JDK directory basename to archive.
-                            Default is auto-detected from the pre-upgrade jdk11
-                            symlink target.
+                            Default is auto-detected from the pre-upgrade
+                            primary JDK symlink target.
   -s, --from-step STEP      Start from a step number or label, for example 5
                             or step_5
       --dry-run             Print commands only, do not execute commands
@@ -104,10 +105,10 @@ EOF
 print_steps() {
   cat <<'EOF'
 step_1  Verify the target JDK installation archive exists
-step_2  Check current /FCR_APP/abinitio/java/jdk11/bin/java --version
+step_2  Check current primary JDK symlink bin/java --version
 step_3  Stop Ab Initio application services when configured
 step_4  Extract/install the target JDK
-step_5  Record old jdk11 target and update JDK symlinks
+step_5  Record old primary JDK target and update JDK symlinks
 step_6  Verify the active java version after symlink update
 step_7  Archive the old JDK directory and optionally delete it
 step_8  Copy JDK folder, deploy script/config, and update PostgreSQL database server hosts
@@ -305,7 +306,7 @@ run_logged_shell() {
 }
 
 capture_java_version() {
-  local java_bin="${JAVA_BASE_DIR}/jdk11/bin/java"
+  local java_bin="${JAVA_BASE_DIR}/${PRIMARY_JDK_SYMLINK}/bin/java"
   local output=""
   local cmd_rc=0
   local display=""
@@ -421,6 +422,9 @@ ensure_array_defined() {
 }
 
 load_config() {
+  local link_name=""
+  local primary_link_found=0
+
   ensure_supported_env
   if [[ -z "${CONFIG_FILE}" ]]; then
     CONFIG_FILE="$(default_config_file_for_env "${ENV_NAME}")"
@@ -445,6 +449,15 @@ load_config() {
   if [[ "${#JDK_SYMLINKS[@]}" -eq 0 ]]; then
     JDK_SYMLINKS=(jdk11 jdk1.8.0_191)
   fi
+  PRIMARY_JDK_SYMLINK="${PRIMARY_JDK_SYMLINK:-${JDK_SYMLINKS[0]}}"
+  path_is_safe_basename "${PRIMARY_JDK_SYMLINK}" || die "PRIMARY_JDK_SYMLINK must be a safe basename: ${PRIMARY_JDK_SYMLINK}"
+  for link_name in "${JDK_SYMLINKS[@]}"; do
+    path_is_safe_basename "${link_name}" || die "JDK symlink name must be a safe basename: ${link_name}"
+    if [[ "${link_name}" == "${PRIMARY_JDK_SYMLINK}" ]]; then
+      primary_link_found=1
+    fi
+  done
+  [[ "${primary_link_found}" -eq 1 ]] || die "PRIMARY_JDK_SYMLINK must be included in JDK_SYMLINKS: ${PRIMARY_JDK_SYMLINK}"
 
   JAVA_VERSION="${CLI_JAVA_VERSION:-${DEFAULT_JAVA_VERSION}}"
   JDK_ARCHIVE="${CLI_JDK_ARCHIVE:-${DEFAULT_JDK_ARCHIVE}}"
@@ -466,7 +479,7 @@ load_config() {
   LOG_RETENTION_DAYS="${LOG_RETENTION_DAYS:-90}"
   DELETE_OLD_JDK_AFTER_ARCHIVE="${DELETE_OLD_JDK_AFTER_ARCHIVE:-yes}"
   DB_UPDATE_COMMAND="${DB_UPDATE_COMMAND:-/bin/bash /opt/clouseau/upgrade_jdk_on_db.sh}"
-  DB_JDK_COPY_SOURCE_PATH="${DB_JDK_COPY_SOURCE_PATH:-${JAVA_BASE_DIR}/jdk11/${JDK_DIR}}"
+  DB_JDK_COPY_SOURCE_PATH="${DB_JDK_COPY_SOURCE_PATH:-${JAVA_BASE_DIR}/${PRIMARY_JDK_SYMLINK}/${JDK_DIR}}"
   DB_JDK_COPY_DEST_DIR="${DB_JDK_COPY_DEST_DIR:-/opt/clouseau/java/}"
   DB_UPDATE_REMOTE_DIR="${DB_UPDATE_REMOTE_DIR:-/opt/clouseau}"
   DB_UPDATE_REMOTE_SCRIPT="${DB_UPDATE_REMOTE_SCRIPT:-${DB_UPDATE_REMOTE_DIR}/upgrade_jdk_on_db.sh}"
@@ -620,15 +633,15 @@ record_old_jdk_target_if_needed() {
     return 0
   fi
 
-  if ! old_target_path="$(resolve_link_target_path jdk11)"; then
-    log_warn "Cannot record old JDK because ${JAVA_BASE_DIR}/jdk11 is not a symlink"
+  if ! old_target_path="$(resolve_link_target_path "${PRIMARY_JDK_SYMLINK}")"; then
+    log_warn "Cannot record old JDK because ${JAVA_BASE_DIR}/${PRIMARY_JDK_SYMLINK} is not a symlink"
     save_old_jdk_basename ""
     return 0
   fi
 
   old_basename="$(basename "${old_target_path}")"
   if [[ "${old_basename}" == "${JDK_DIR}" ]]; then
-    log_info "jdk11 already points to target JDK ${JDK_DIR}; no old JDK directory to archive"
+    log_info "${PRIMARY_JDK_SYMLINK} already points to target JDK ${JDK_DIR}; no old JDK directory to archive"
     save_old_jdk_basename ""
     return 0
   fi
@@ -866,6 +879,7 @@ print_runtime_summary() {
   log_info "target java version: ${JAVA_VERSION}"
   log_info "target JDK archive: ${JDK_ARCHIVE_PATH}"
   log_info "target JDK directory: ${TARGET_JDK_PATH}"
+  log_info "primary JDK symlink: ${PRIMARY_JDK_SYMLINK}"
   log_info "target JDK chmod mode: ${TARGET_JDK_CHMOD_MODE}"
   log_info "DB JDK copy source: ${DB_JDK_COPY_SOURCE_PATH}"
   log_info "DB JDK copy destination: ${DB_JDK_COPY_DEST_DIR}"
