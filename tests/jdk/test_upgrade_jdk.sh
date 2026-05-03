@@ -135,6 +135,38 @@ LOG_RETENTION_DAYS=90
 EOF
 }
 
+make_prod_cont_skip_db_config() {
+  local config_file="$1"
+  local temp_root="$2"
+
+  cat > "${config_file}" <<EOF
+JAVA_BASE_DIR="${temp_root}/java"
+JDK_SOFTWARE_DIR="${temp_root}/software"
+DEFAULT_JAVA_VERSION="11.0.31"
+DEFAULT_JDK_ARCHIVE="zulu11.88.18-sa-jdk11.0.31-linux_x64.tar.gz"
+DEFAULT_JDK_DIR="zulu11.88.18-sa-jdk11.0.31-linux_x64"
+TARGET_JDK_CHMOD_MODE="0755"
+JDK_SYMLINKS=(jdk-11.0.11 jdk1.8.0_191)
+PRIMARY_JDK_SYMLINK="jdk-11.0.11"
+STOP_COMMANDS=()
+START_COMMANDS=()
+DB_UPDATE_HOSTS=(gbl25164751.hc.cloud.uk.hsbc)
+DB_JDK_COPY_HOSTS=(gbl25164751.hc.cloud.uk.hsbc)
+DB_UPDATE_COMMAND="/bin/bash /opt/clouseau/upgrade_jdk_on_db.sh"
+DB_JDK_COPY_SOURCE_PATH="${temp_root}/java/jdk-11.0.11/zulu11.88.18-sa-jdk11.0.31-linux_x64"
+DB_JDK_COPY_DEST_DIR="/opt/clouseau/java/"
+DB_UPDATE_REMOTE_SCRIPT="/opt/clouseau/upgrade_jdk_on_db.sh"
+DB_UPDATE_REMOTE_CONFIG="/opt/clouseau/jdk_pg_upgrade_prod-cont.conf"
+DB_UPDATE_SCRIPT_SOURCE="${ROOT_DIR}/scripts/jdk/upgrade_jdk_on_db.sh"
+DB_UPDATE_CONFIG_SOURCE="${ROOT_DIR}/configs/jdk/jdk_pg_upgrade_prod-cont.conf"
+SKIP_DB_UPDATE_STEP="yes"
+DELETE_OLD_JDK_AFTER_ARCHIVE="yes"
+LOG_DIR="${temp_root}/logs"
+STATE_DIR="${temp_root}/state"
+LOG_RETENTION_DAYS=90
+EOF
+}
+
 make_target_archive() {
   local temp_root="$1"
   local build_dir="${temp_root}/build"
@@ -286,6 +318,26 @@ test_dry_run_displays_readable_commands() {
   assert_not_contains "${output}" '/bin/bash\ /opt'
 }
 
+test_prod_cont_skips_database_update_step() {
+  local temp_root=""
+  local config_file=""
+  local output=""
+
+  temp_root="$(mktemp -d)"
+  trap "rm -rf '${temp_root}'" RETURN
+  config_file="${temp_root}/jdk_upgrade_prod-cont.conf"
+
+  mkdir -p "${temp_root}/java" "${temp_root}/software"
+  make_prod_cont_skip_db_config "${config_file}" "${temp_root}"
+
+  output="$("${SCRIPT}" --env prod-cont --config "${config_file}" --from-step step_8 --auto-continue --dry-run 2>&1)"
+
+  assert_contains "${output}" "Skipping DB JDK update step for prod-cont"
+  assert_not_contains "${output}" "scp -qr"
+  assert_not_contains "${output}" "ssh -q"
+  assert_not_contains "${output}" "upgrade_jdk_on_db.sh --env prod-cont"
+}
+
 test_old_jdk_basename_override_archives_requested_directory() {
   local temp_root=""
   local config_file=""
@@ -385,6 +437,7 @@ main() {
   test_prod_uses_jdk_11_0_11_primary_symlink
   test_prod_dry_run_checks_primary_symlink_java
   test_dry_run_displays_readable_commands
+  test_prod_cont_skips_database_update_step
   test_old_jdk_basename_override_archives_requested_directory
   test_fresh_run_overwrites_stale_old_jdk_state
   test_old_jdk_basename_rejects_unsafe_values
