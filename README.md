@@ -66,7 +66,7 @@ Before updating symlinks, it records the current primary JDK symlink target and 
 `--old-jdk-basename` is an operator override for abnormal resume or manual-repair cases; it must be a basename only and cannot equal the target JDK directory.
 It refuses to archive or delete the target JDK directory as the old JDK.
 `DELETE_OLD_JDK_AFTER_ARCHIVE` controls whether the old directory is removed after its `.tar.gz` archive is created.
-`prod-cont` skips application service stop/start by default because its config has empty service command arrays.
+`prod-cont` skips application service stop/start and the PostgreSQL DB JDK update step by default.
 `DB_JDK_COPY_HOSTS` controls where the extracted JDK folder is copied, and `DB_UPDATE_HOSTS` controls where the PG-side script/config is deployed and executed.
 DB host updates are executed serially over SSH with explicit `--env`, `--config`, `--java-version`, and `--jdk-dir` arguments, and stop at the first failure.
 Logs are written under `logs/`, error logs use the same name with `.err`, and files older than 90 days are removed automatically.

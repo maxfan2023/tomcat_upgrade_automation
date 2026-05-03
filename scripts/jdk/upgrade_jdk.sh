@@ -51,6 +51,7 @@ DB_UPDATE_CONFIG_SOURCE=""
 DB_UPDATE_REMOTE_DIR=""
 DB_UPDATE_REMOTE_SCRIPT=""
 DB_UPDATE_REMOTE_CONFIG=""
+SKIP_DB_UPDATE_STEP=""
 RUN_DATE_YYYYMMDD="$(date +%Y%m%d)"
 OLD_JDK_STATE_FILE=""
 OLD_JDK_BASENAME=""
@@ -486,6 +487,7 @@ load_config() {
   DB_UPDATE_REMOTE_CONFIG="${DB_UPDATE_REMOTE_CONFIG:-${DB_UPDATE_REMOTE_DIR}/jdk_pg_upgrade_${ENV_NAME}.conf}"
   DB_UPDATE_SCRIPT_SOURCE="${DB_UPDATE_SCRIPT_SOURCE:-${REPO_ROOT}/scripts/jdk/upgrade_jdk_on_db.sh}"
   DB_UPDATE_CONFIG_SOURCE="${DB_UPDATE_CONFIG_SOURCE:-${REPO_ROOT}/configs/jdk/jdk_pg_upgrade_${ENV_NAME}.conf}"
+  SKIP_DB_UPDATE_STEP="${SKIP_DB_UPDATE_STEP:-no}"
   POST_STOP_CHECK_CMD="${POST_STOP_CHECK_CMD:-}"
   POST_START_CHECK_CMD="${POST_START_CHECK_CMD:-}"
 }
@@ -814,6 +816,11 @@ step_8_update_database_hosts() {
   local remote_command=""
 
   log_step "step_8 Update PostgreSQL database server JDK"
+  if [[ "${SKIP_DB_UPDATE_STEP}" == "yes" ]]; then
+    log_skip "Skipping DB JDK update step for ${ENV_NAME}"
+    return 0
+  fi
+
   if [[ "${#DB_UPDATE_HOSTS[@]}" -eq 0 && "${#DB_JDK_COPY_HOSTS[@]}" -eq 0 ]]; then
     log_skip "No DB copy or update hosts configured for ${ENV_NAME}"
     return 0
@@ -885,6 +892,7 @@ print_runtime_summary() {
   log_info "DB JDK copy destination: ${DB_JDK_COPY_DEST_DIR}"
   log_info "DB update script source: ${DB_UPDATE_SCRIPT_SOURCE}"
   log_info "DB update config source: ${DB_UPDATE_CONFIG_SOURCE}"
+  log_info "skip DB update step: ${SKIP_DB_UPDATE_STEP}"
   log_info "delete old JDK after archive: ${DELETE_OLD_JDK_AFTER_ARCHIVE}"
   log_info "dry-run: ${DRY_RUN}"
   log_info "from-step: $(step_label_for_number "${START_STEP}")"
