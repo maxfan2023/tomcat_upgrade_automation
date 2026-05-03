@@ -101,6 +101,7 @@ Step `11` purges `bin`, `conf`, `logs`, `temp`, `webapps`, and `work` under the 
 Step `6` runs the Tomcat `version.sh` check after sourcing the matching environment profile.
 Step `2`, `4`, `5`, `6`, `7`, and `11` print `ls -lrth` for the apps directory at the end of the step for visibility.
 `penv-cont` reuses the `penv` filesystem paths, but skips service stop and start.
+During step `5`, `penv-cont` exports `AB_HOST_INTERFACE=gbl25164751.hc.cloud.uk.hsbc` before sourcing the profile.
 
 ### Config Notes
 
