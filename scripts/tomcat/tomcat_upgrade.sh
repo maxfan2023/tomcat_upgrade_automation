@@ -34,6 +34,7 @@ ERROR_LOG_FILE=""
 LAST_CAPTURED_OUTPUT=""
 
 DEFAULT_CONFIG_FILE="${REPO_ROOT}/configs/tomcat/default.conf"
+PENV_CONT_INSTALL_PRE_SOURCE_CMD_DEFAULT="export AB_HOST_INTERFACE=gbl25164751.hc.cloud.uk.hsbc"
 DEFAULT_STEPS=(1 2 3 4 5 6 7 8 9 10 11)
 CLEANUP_STEPS=(13 14)
 RUNTIME_SUBDIRS=(bin conf logs temp webapps work)
@@ -696,6 +697,32 @@ optional_hook_for_env() {
   config_get "$1" "$2"
 }
 
+default_install_pre_source_cmd_for_env() {
+  case "$1" in
+    penv-cont) printf '%s\n' "${PENV_CONT_INSTALL_PRE_SOURCE_CMD_DEFAULT}" ;;
+  esac
+}
+
+install_pre_source_cmd_for_filesystem_env() {
+  local filesystem_env="$1"
+  local selected_env=""
+  local selected_filesystem_env=""
+  local pre_source_cmd=""
+
+  for selected_env in "${SELECTED_ENVS[@]}"; do
+    selected_filesystem_env="$(config_get ENV_FILESYSTEM_KEY "${selected_env}")"
+    selected_filesystem_env="${selected_filesystem_env:-${selected_env}}"
+    [[ "${selected_filesystem_env}" == "${filesystem_env}" ]] || continue
+
+    pre_source_cmd="$(config_get ENV_INSTALL_PRE_SOURCE_CMD "${selected_env}")"
+    pre_source_cmd="${pre_source_cmd:-$(default_install_pre_source_cmd_for_env "${selected_env}")}"
+    if [[ -n "${pre_source_cmd}" ]]; then
+      printf '%s\n' "${pre_source_cmd}"
+      return 0
+    fi
+  done
+}
+
 org_dir_path() {
   printf '%s_org\n' "$1"
 }
@@ -946,12 +973,28 @@ build_profile_shell_cmd() {
   local env_name="$2"
   local cwd="$3"
   local command_string="$4"
+  local pre_source_command="${5:-}"
   local profile
   local built_shell_cmd=""
 
   profile="$(profile_for_env "${env_name}")"
-  printf -v built_shell_cmd 'source %q && cd %q && %s' "${profile}" "${cwd}" "${command_string}"
+  if [[ -n "${pre_source_command}" ]]; then
+    printf -v built_shell_cmd '%s && source %q && cd %q && %s' "${pre_source_command}" "${profile}" "${cwd}" "${command_string}"
+  else
+    printf -v built_shell_cmd 'source %q && cd %q && %s' "${profile}" "${cwd}" "${command_string}"
+  fi
   printf -v "${result_var}" '%s' "${built_shell_cmd}"
+}
+
+run_profile_command_with_pre_source() {
+  local env_name="$1"
+  local cwd="$2"
+  local pre_source_command="$3"
+  shift 3
+  local command_string="$*"
+  local shell_cmd
+  build_profile_shell_cmd shell_cmd "${env_name}" "${cwd}" "${command_string}" "${pre_source_command}"
+  run_shell_cmd "${shell_cmd}"
 }
 
 run_profile_capture_command() {
@@ -1300,6 +1343,7 @@ step_4() {
 step_5() {
   local env_name=""
   local apps_dir=""
+  local pre_source_cmd=""
   local state=""
   local installer_path
   installer_path="$(installer_tarball_path)"
@@ -1307,13 +1351,14 @@ step_5() {
   log_step "Step 5 - Install the target Tomcat version"
   for env_name in "${FILESYSTEM_ENVS[@]}"; do
     apps_dir="$(apps_dir_for_env "${env_name}")"
+    pre_source_cmd="$(install_pre_source_cmd_for_filesystem_env "${env_name}")"
 
     # In dry-run mode we do not inspect the live filesystem here because step 4
     # only printed the rename commands and did not actually move directories.
     # To keep the preview faithful to the intended workflow, just print the
     # install command that would run after a successful rename.
     if [[ "${DRY_RUN}" -eq 1 ]]; then
-      run_profile_command "${env_name}" "${apps_dir}" "ab-app install $(quote_cmd "${installer_path}")"
+      run_profile_command_with_pre_source "${env_name}" "${apps_dir}" "${pre_source_cmd}" "ab-app install $(quote_cmd "${installer_path}")"
     else
       state="$(required_dir_state "${env_name}")"
 
@@ -1329,7 +1374,7 @@ step_5() {
           die "Partial Tomcat installation detected for ${env_name}; please repair the filesystem state before retrying"
           ;;
         none)
-          run_profile_command "${env_name}" "${apps_dir}" "ab-app install $(quote_cmd "${installer_path}")"
+          run_profile_command_with_pre_source "${env_name}" "${apps_dir}" "${pre_source_cmd}" "ab-app install $(quote_cmd "${installer_path}")"
           ;;
         *)
           die "Unknown installation state '${state}' for ${env_name}"
